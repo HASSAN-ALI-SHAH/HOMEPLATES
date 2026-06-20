@@ -245,6 +245,7 @@ router.get('/withdrawals', authMiddleware, adminOnly, async (req, res) => {
 });
 
 // Process Withdrawal (Approve / Reject)
+// B5/B6: Emit socket notification to chef with updated balance
 router.patch('/withdrawals/:id', authMiddleware, adminOnly, async (req, res) => {
   try {
     const { action } = req.body; // action: 'approve' | 'reject'
@@ -261,25 +262,48 @@ router.patch('/withdrawals/:id', authMiddleware, adminOnly, async (req, res) => 
     transaction.processedBy = req.user.id;
     await transaction.save();
 
+    let newBalance = chef.wallet;
+
     if (action === 'approve') {
-      // Amount is already deducted from wallet at request time.
-      // So we just clear/reduce it from pendingBalance (approved debit is processed).
+      // Amount already deducted from wallet at request time
       chef.pendingBalance = Math.max(0, chef.pendingBalance - transaction.amount);
       await chef.save();
+      newBalance = chef.wallet;
 
-      // Send confirmation email
       const emailHtml = `<h2>Payment Processed!</h2><p>Your withdrawal request for Rs. ${transaction.amount} via ${transaction.paymentMethod} has been approved and processed.</p>`;
       await sendEmail(chef.email, `Payment Processed — Rs. ${transaction.amount}`, emailHtml);
+
+      // B5: Notify chef in real-time of approval
+      try {
+        const io = socketHelper.getIo();
+        io.to(`chef_${chef._id}`).emit('withdrawal_update', {
+          action: 'approved',
+          amount: transaction.amount,
+          newBalance,
+          message: `✅ Your withdrawal of PKR ${transaction.amount} has been approved and processed!`
+        });
+      } catch (_) {}
 
     } else if (action === 'reject') {
       // Refund pending balance back to wallet
       chef.wallet += transaction.amount;
       chef.pendingBalance = Math.max(0, chef.pendingBalance - transaction.amount);
       await chef.save();
+      newBalance = chef.wallet;
 
-      // Send rejection email
       const emailHtml = `<h2>Withdrawal Rejected</h2><p>Your withdrawal request for Rs. ${transaction.amount} has been rejected. The amount has been refunded to your wallet balance.</p>`;
       await sendEmail(chef.email, "HomePlates — Withdrawal Request Rejected", emailHtml);
+
+      // B5/B6: Notify chef in real-time of rejection + send updated balance so frontend updates immediately
+      try {
+        const io = socketHelper.getIo();
+        io.to(`chef_${chef._id}`).emit('withdrawal_update', {
+          action: 'rejected',
+          amount: transaction.amount,
+          newBalance,
+          message: `❌ Your withdrawal of PKR ${transaction.amount} was rejected. The amount has been refunded to your wallet.`
+        });
+      } catch (_) {}
     }
 
     res.json({ message: `Withdrawal request ${transaction.status} successfully`, transaction });
@@ -361,29 +385,28 @@ router.get('/daily-deliveries', authMiddleware, adminOnly, async (req, res) => {
 });
 
 // Get Rider Monitoring Data
+// B2: Accept ?verified=true|false|all query param
 router.get('/riders', authMiddleware, adminOnly, async (req, res) => {
   try {
-    const riders = await User.find({ role: 'rider' }).select('-password');
+    const { verified } = req.query;
+    let riderQuery = { role: 'rider' };
+    if (verified === 'true') riderQuery.isVerified = true;
+    else if (verified === 'false') riderQuery.isVerified = false;
+    // 'all' or omitted = no filter
+
+    const riders = await User.find(riderQuery).select('-password');
     const riderLogs = [];
 
     for (let rider of riders) {
-      // 1. Assigned/Active orders (orders assigned to rider, status not delivered/cancelled/failed)
       const assignedOrders = await Order.find({
         rider: rider._id,
-        status: { $nin: ['delivered', 'cancelled', 'delivery-failed'] }
+        status: { $nin: ['delivered', 'cancelled', 'delivery-failed', 'rider_cancelled'] }
       }).populate('user chef');
 
-      // 2. Accepted orders (all orders accepted by this rider, including completed/cancelled/in-progress/failed)
-      const acceptedOrders = await Order.find({
-        rider: rider._id
-      }).populate('user chef');
+      const acceptedOrders = await Order.find({ rider: rider._id }).populate('user chef');
 
-      // 3. Ignored requests (orders where this rider is in ignoredBy)
-      const ignoredOrders = await Order.find({
-        ignoredBy: rider._id
-      }).populate('user chef');
+      const ignoredOrders = await Order.find({ ignoredBy: rider._id }).populate('user chef');
 
-      // 4. Delivery status history across all orders updated by this rider
       const statusHistoryOrders = await Order.find({
         'statusHistory.updatedBy': rider._id
       }).populate('user chef');
@@ -402,7 +425,6 @@ router.get('/riders', authMiddleware, adminOnly, async (req, res) => {
           }
         }
       }
-      // Sort history log by timestamp descending
       historyLog.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
       riderLogs.push({
@@ -413,6 +435,7 @@ router.get('/riders', authMiddleware, adminOnly, async (req, res) => {
           phone: rider.phone,
           city: rider.city || 'Lahore',
           isActive: rider.isActive,
+          isVerified: rider.isVerified,
           vehicle: rider.vehicle || 'Not specified'
         },
         assignedOrders,

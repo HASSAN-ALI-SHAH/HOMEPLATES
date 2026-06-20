@@ -54,7 +54,8 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
   const [notifications, setNotifications] = useState([]);
   const [showNoti, setShowNoti] = useState(false);
 
-  // Withdraw States
+  // B14: Delete dish modal state
+  const [deleteDishModal, setDeleteDishModal] = useState(null); // { id, name } or null
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawMethod, setWithdrawMethod] = useState('EasyPaisa');
@@ -273,7 +274,7 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
       socket.emit('join_chef_room', chefId);
     });
 
-    socket.on('new_order_notification', ({ status, message }) => {
+    socket.on('new_order_notification', ({ status, message, orderId }) => {
       // Always refresh orders
       fetchAll();
       // Show appropriate alerts based on status
@@ -281,7 +282,6 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
         setNewOrderAlert(true); // New incoming order
         addNotification('🍽️ New Order Received', message || 'A new customer has placed an order.');
       } else if (status === 'rider_accepted') {
-        // FIX #2: Chef ONLY notified after rider accepts (correct flow)
         setRiderAlert('🚴 A rider has accepted your order and is heading to your kitchen! Head to your kitchen.');
         setTimeout(() => setRiderAlert(null), 10000);
         addNotification('🚴 Rider Accepted Order', message || 'A rider is heading to your kitchen.');
@@ -298,7 +298,44 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
         setRiderAlert('✅ Order successfully delivered to the customer! Payment has been added to your wallet.');
         setTimeout(() => setRiderAlert(null), 10000);
         fetchAll(); // refresh wallet balance
+      // B12: Rider cancelled
+      } else if (status === 'rider_cancelled') {
+        setRiderAlert('⚠️ Rider cancelled this order. Please check Orders tab to re-assign.');
+        setTimeout(() => setRiderAlert(null), 12000);
+        addNotification('⚠️ Rider Cancelled', message || 'Rider cancelled order. Action needed.');
+        fetchAll();
+      // B10: Delivery failed — chef action required
+      } else if (status === 'delivery-failed') {
+        setRiderAlert('❌ Delivery failed! Go to Orders tab to re-assign a rider or cancel the order.');
+        setTimeout(() => setRiderAlert(null), 15000);
+        addNotification('❌ Delivery Failed', message || 'Delivery failed. Action required.');
+        fetchAll();
+      } else if (status === 'subscription_approved') {
+        addNotification('💰 New Subscriber', message || 'A subscriber payment was confirmed.');
+        fetchAll();
+      } else if (status === 'cancelled') {
+        addNotification('🚫 Order Cancelled', message || 'An order was cancelled.');
+        fetchAll();
       }
+    });
+
+    // B5/B6: Handle withdrawal approval/rejection updates from admin
+    socket.on('withdrawal_update', ({ action, amount, newBalance, message }) => {
+      if (action === 'approved') {
+        toast.success(`✅ Withdrawal of PKR ${amount} approved!`);
+        addNotification('✅ Withdrawal Approved', message || `PKR ${amount} withdrawal has been processed.`);
+      } else if (action === 'rejected') {
+        toast.error(`❌ Withdrawal of PKR ${amount} was rejected. Amount refunded.`);
+        addNotification('❌ Withdrawal Rejected', message || `PKR ${amount} refunded to your wallet.`);
+      }
+      // B6: Update wallet balance immediately without requiring re-login
+      if (typeof newBalance === 'number') {
+        setWalletData(prev => ({ ...prev, totalBalance: newBalance }));
+      }
+      // Clear any stale withdraw form errors so chef can re-submit immediately
+      setWithdrawError('');
+      setWithdrawSuccess('');
+      fetchAll(); // also fetch fresh transactions list
     });
 
     // ── Admin approval / rejection in-app notification ──
@@ -355,13 +392,13 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
   };
 
   const deleteDish = async (dishId) => {
-    if (!window.confirm('Delete this dish?')) return;
-    try { 
-      await API.delete(`/api/chef/dish/${dishId}`, authH); 
+    // B14: Use modal state instead of window.confirm
+    setDeleteDishModal(null);
+    try {
+      await API.delete(`/api/chef/dish/${dishId}`, authH);
       setMenuItems(prev => prev.filter(d => d._id !== dishId));
       toast.success('Dish deleted successfully!');
-    }
-    catch (e) { toast.error('Delete failed'); }
+    } catch (e) { toast.error('Delete failed: ' + (e.response?.data?.message || e.message)); }
   };
 
   const handleLogout = () => {
@@ -377,10 +414,34 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
 
   const pending = orders.filter(o => o.status === 'pending').length;
   const delivered = orders.filter(o => o.status === 'delivered').length;
-  const badge = (s) => ({ pending: 'bg-yellow-100 text-yellow-700', accepted: 'bg-orange-100 text-orange-700', preparing: 'bg-blue-100 text-blue-700', 'ready-for-pickup': 'bg-indigo-100 text-indigo-700', 'picked-up': 'bg-teal-100 text-teal-700', 'out-for-delivery': 'bg-purple-100 text-purple-700', delivered: 'bg-green-100 text-green-700', cancelled: 'bg-red-100 text-red-700' }[s] || 'bg-gray-100 text-gray-600');
+  const badge = (s) => ({ pending: 'bg-yellow-100 text-yellow-700', accepted: 'bg-orange-100 text-orange-700', preparing: 'bg-blue-100 text-blue-700', 'ready-for-pickup': 'bg-indigo-100 text-indigo-700', 'picked-up': 'bg-teal-100 text-teal-700', 'out-for-delivery': 'bg-purple-100 text-purple-700', delivered: 'bg-green-100 text-green-700', cancelled: 'bg-red-100 text-red-700', 'delivery-failed': 'bg-red-200 text-red-800', 'rider_cancelled': 'bg-orange-100 text-orange-700' }[s] || 'bg-gray-100 text-gray-600');
 
   return (
     <div className="min-h-screen bg-[#F4F7F2] flex flex-col md:flex-row font-sans text-[#1A2316]">
+
+      {/* B14: Delete Dish Confirm Modal */}
+      {deleteDishModal && (
+        <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-[35px] p-8 max-w-sm w-full shadow-2xl">
+            <h3 className="font-black text-lg uppercase italic mb-2 text-red-600">Delete Dish?</h3>
+            <p className="text-sm text-gray-600 font-bold mb-2">
+              Are you sure you want to delete <span className="text-[#1A2316] font-black">"{deleteDishModal.name}"</span>?
+            </p>
+            <p className="text-xs text-gray-400 font-bold mb-6">This action cannot be undone.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteDishModal(null)} className="flex-1 py-3 bg-gray-100 rounded-2xl font-black text-[10px] uppercase hover:bg-gray-200 transition-all">
+                Cancel
+              </button>
+              <button
+                onClick={() => deleteDish(deleteDishModal.id)}
+                className="flex-1 py-3 bg-red-500 text-white rounded-2xl font-black text-[10px] uppercase hover:bg-red-600 transition-all"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <aside className="w-full md:w-72 bg-[#1A2316] text-white p-6 flex flex-col md:sticky md:top-0 md:h-screen shadow-2xl z-50">
         <div className="flex items-center gap-3 mb-12 px-2">
           <div className="bg-[#FBBF24] p-2.5 rounded-xl text-[#1A2316]"><ChefHat size={24} /></div>
@@ -597,9 +658,104 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
                       📦 Request Rider for Pickup {o.isSubscriptionOrder ? '(Subscription)' : ''}
                     </button>
                   )}
-                  {o.status === 'ready-for-pickup' && (
+                  {/* B10: Delivery Failed — Action Required */}
+                  {o.status === 'delivery-failed' && (
+                    <div className="bg-red-50 border-2 border-red-300 rounded-2xl p-4 space-y-3">
+                      <p className="text-red-700 font-black text-[10px] uppercase tracking-widest">⚠️ Delivery Failed — Action Required</p>
+                      <p className="text-xs text-red-600 font-bold">
+                        {o.failureReason ? `Reason: ${o.failureReason}` : 'Rider could not complete this delivery.'}
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={async () => {
+                            try {
+                              const token = localStorage.getItem('token');
+                              await fetch(`http://localhost:5000/api/orders/${o._id}/resolve-failure`, {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                body: JSON.stringify({ action: 'reassign' })
+                              });
+                              toast.success('Order re-broadcast to available riders!');
+                              fetchAll();
+                            } catch (e) { toast.error('Error re-assigning'); }
+                          }}
+                          className="flex-1 py-2.5 bg-[#FBBF24] text-[#1A2316] rounded-xl font-black text-[9px] uppercase hover:opacity-90 transition-all"
+                        >
+                          🔄 Re-assign Rider
+                        </button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              const token = localStorage.getItem('token');
+                              await fetch(`http://localhost:5000/api/orders/${o._id}/resolve-failure`, {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                body: JSON.stringify({ action: 'cancel', cancellationReason: 'Cancelled after delivery failure.' })
+                              });
+                              toast.success('Order cancelled.');
+                              fetchAll();
+                            } catch (e) { toast.error('Error cancelling order'); }
+                          }}
+                          className="flex-1 py-2.5 bg-red-100 text-red-700 rounded-xl font-black text-[9px] uppercase hover:bg-red-200 transition-all"
+                        >
+                          ✕ Cancel Order
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* B12: Rider Cancelled — Action Required */}
+                  {o.status === 'rider_cancelled' && (
+                    <div className="bg-orange-50 border-2 border-orange-300 rounded-2xl p-4 space-y-3">
+                      <p className="text-orange-700 font-black text-[10px] uppercase tracking-widest">⚠️ Rider Cancelled — Re-assign Needed</p>
+                      <p className="text-xs text-orange-600 font-bold">The assigned rider cancelled this order. Re-assign to a new rider or cancel.</p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={async () => {
+                            try {
+                              await updateStatus(o._id, 'ready-for-pickup');
+                              toast.success('Order re-broadcast to available riders!');
+                              fetchAll();
+                            } catch (e) { toast.error('Error re-broadcasting'); }
+                          }}
+                          className="flex-1 py-2.5 bg-[#FBBF24] text-[#1A2316] rounded-xl font-black text-[9px] uppercase hover:opacity-90 transition-all"
+                        >
+                          🔄 Find New Rider
+                        </button>
+                        <button
+                          onClick={() => updateStatus(o._id, 'cancelled', 'Cancelled after rider refused.')}
+                          className="flex-1 py-2.5 bg-red-100 text-red-700 rounded-xl font-black text-[9px] uppercase hover:bg-red-200 transition-all"
+                        >
+                          ✕ Cancel Order
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* B11: Stuck in ready-for-pickup (no rider assigned) — Re-broadcast */}
+                  {o.status === 'ready-for-pickup' && !o.rider && (
+                    <div className="flex items-center justify-between bg-indigo-50 border border-indigo-200 px-4 py-3 rounded-2xl">
+                      <span className="text-indigo-600 font-black text-[10px] uppercase">⏳ Awaiting Rider — No rider found yet</span>
+                      <button
+                        onClick={async () => {
+                          try {
+                            const token = localStorage.getItem('token');
+                            await fetch(`http://localhost:5000/api/orders/${o._id}/rebroadcast`, {
+                              method: 'PATCH',
+                              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+                            });
+                            toast.success('Re-broadcast sent to available riders!');
+                          } catch (e) { toast.error('Re-broadcast failed'); }
+                        }}
+                        className="text-[9px] font-black uppercase bg-indigo-600 text-white px-4 py-2 rounded-xl hover:bg-indigo-700 transition-all ml-3"
+                      >
+                        📡 Re-broadcast
+                      </button>
+                    </div>
+                  )}
+                  {o.status === 'ready-for-pickup' && o.rider && (
                     <div className="flex items-center gap-3 bg-indigo-50 border border-indigo-200 px-4 py-3 rounded-2xl">
-                      <span className="text-indigo-600 font-black text-[10px] uppercase">⏳ Ready for Pickup — {o.rider ? `Rider ${o.rider.name} heading over` : 'Awaiting Rider Assignment...'}</span>
+                      <span className="text-indigo-600 font-black text-[10px] uppercase">🚴 Rider {o.rider.name} is heading to your kitchen</span>
                     </div>
                   )}
                   {o.status === 'picked-up' && (
@@ -643,7 +799,7 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
                           {d.isAvailable?<ToggleRight size={12} className="text-green-500"/>:<ToggleLeft size={12} className="text-red-500"/>}{d.isAvailable?'Hide':'Show'}
                         </button>
                         <button onClick={() => navigate(`/chef/edit-dish/${d._id}`)} className="flex-1 flex items-center justify-center gap-1 py-2 bg-[#1A2316] text-[#FBBF24] rounded-xl text-[9px] font-black uppercase"><Edit3 size={12}/>Edit</button>
-                        <button onClick={() => deleteDish(d._id)} className="py-2 px-3 bg-red-50 text-red-500 rounded-xl text-[9px] font-black uppercase hover:bg-red-100 transition-all"><Trash2 size={12}/></button>
+                        <button onClick={() => setDeleteDishModal({ id: d._id, name: d.name })} className="py-2 px-3 bg-red-50 text-red-500 rounded-xl text-[9px] font-black uppercase hover:bg-red-100 transition-all"><Trash2 size={12}/></button>
                       </div>
                     </div>
                   </div>

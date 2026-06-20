@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import {
   LogOut, ChevronRight, Truck, Save, Edit2, User,
   Pause, Play, Package, Star, HelpCircle, Home,
-  Phone, Mail, MapPin, Clock, CheckCircle, XCircle, AlertTriangle
+  Phone, Mail, MapPin, Clock, CheckCircle, XCircle, AlertTriangle, X
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from '../utils/toast';
+import { io } from 'socket.io-client';
 
 const UserProfile = ({ user, onLogout, onUserUpdate }) => {
   const navigate = useNavigate();
@@ -23,6 +24,11 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // B16: Cancel order modal
+  const [cancelOrderModal, setCancelOrderModal] = useState(null); // { orderId } or null
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelling, setCancelling] = useState(false);
 
   const [profileData, setProfileData] = useState({ name: '', phone: '', email: '', address: '' });
   const [orders, setOrders] = useState([]);
@@ -72,11 +78,55 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
       }
     };
     fetchData();
+
+    // B4: Connect to socket and listen for payment events
+    if (user?._id) {
+      const socket = io('http://localhost:5000', { transports: ['websocket', 'polling'] });
+      socket.emit('join_user_room', user._id);
+      socket.on('connect', () => socket.emit('join_user_room', user._id));
+
+      // B4: Payment approved — refresh subscriptions immediately
+      socket.on('payment_approved', ({ message }) => {
+        toast.success(message || '✅ Payment approved! Your subscription is now active.');
+        fetchData();
+      });
+      // B3: Payment rejected — refresh subscriptions to show red banner
+      socket.on('payment_rejected', ({ message }) => {
+        toast.error(message || '❌ Payment rejected. Please re-upload your proof.');
+        fetchData();
+      });
+
+      return () => socket.disconnect();
+    }
   }, [user]);
 
-  // -------------------------------------------------------
-  // PROFILE SAVE
-  // -------------------------------------------------------
+  // B16: Cancel order handler
+  const handleCancelOrder = async () => {
+    if (!cancelOrderModal || !cancelReason.trim()) return;
+    setCancelling(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`http://localhost:5000/api/orders/${cancelOrderModal.orderId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status: 'cancelled', cancellationReason: cancelReason })
+      });
+      if (res.ok) {
+        setOrders(prev => prev.map(o => o._id === cancelOrderModal.orderId ? { ...o, status: 'cancelled' } : o));
+        toast.success('Order cancelled successfully.');
+        setCancelOrderModal(null);
+        setCancelReason('');
+      } else {
+        const err = await res.json();
+        toast.error(err.message || 'Failed to cancel order.');
+      }
+    } catch (err) {
+      toast.error('Network error. Please try again.');
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!isEditing) {
       setIsEditing(true);
@@ -210,6 +260,40 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
 
   return (
     <div className="min-h-screen bg-[#F4F7F2] pt-24 pb-20 px-4 md:px-8 font-sans">
+
+      {/* B16: Cancel Order Modal */}
+      {cancelOrderModal && (
+        <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-[35px] p-8 max-w-sm w-full shadow-2xl">
+            <h3 className="font-black text-lg uppercase italic mb-2 text-red-600">Cancel Order?</h3>
+            <p className="text-xs text-gray-500 font-bold mb-4">
+              This order will be cancelled and the chef will be notified. Please provide a reason.
+            </p>
+            <textarea
+              value={cancelReason}
+              onChange={e => setCancelReason(e.target.value)}
+              placeholder="Reason for cancellation (required)..."
+              className="w-full border-2 border-gray-200 rounded-2xl p-3 text-sm font-bold outline-none focus:border-red-400 resize-none h-24 mb-4"
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setCancelOrderModal(null); setCancelReason(''); }}
+                className="flex-1 py-3 bg-gray-100 rounded-2xl font-black text-[10px] uppercase hover:bg-gray-200 transition-all"
+              >
+                Back
+              </button>
+              <button
+                onClick={handleCancelOrder}
+                disabled={!cancelReason.trim() || cancelling}
+                className="flex-1 py-3 bg-red-500 text-white rounded-2xl font-black text-[10px] uppercase hover:bg-red-600 transition-all disabled:opacity-50"
+              >
+                {cancelling ? 'Cancelling...' : 'Confirm Cancel'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-6xl mx-auto grid lg:grid-cols-4 gap-8">
 
         {/* ===== SIDEBAR ===== */}
@@ -491,6 +575,15 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
                                 <Star size={12} /> Review Chef
                               </button>
                             )}
+                            {/* B16: Cancel button for pending/accepted orders */}
+                            {['pending', 'accepted'].includes(order.status) && (
+                              <button
+                                onClick={() => setCancelOrderModal({ orderId: order._id })}
+                                className="flex items-center gap-2 bg-red-50 text-red-600 border border-red-200 px-5 py-3 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-red-100 transition-all"
+                              >
+                                <XCircle size={12} /> Cancel
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -528,8 +621,30 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
                     </div>
                   ) : (
                     subscriptions.map(sub => (
-                      <div key={sub._id} className="bg-gray-50 p-7 rounded-[28px]">
-                        <div className="flex justify-between items-start mb-5">
+                        <div key={sub._id} className="bg-gray-50 p-7 rounded-[28px]">
+
+                          {/* B3: Payment Rejected Banner */}
+                          {(sub.paymentStatus === 'rejected' || sub.status === 'payment_failed') && (
+                            <div className="mb-5 bg-red-50 border-2 border-red-300 rounded-2xl p-4 flex items-start gap-3">
+                              <AlertTriangle size={18} className="text-red-500 flex-shrink-0 mt-0.5" />
+                              <div>
+                                <p className="text-red-700 font-black text-[10px] uppercase tracking-widest mb-1">
+                                  ❌ Payment Rejected
+                                </p>
+                                <p className="text-xs text-red-600 font-bold">
+                                  Your payment proof was rejected by the admin. Please re-upload a clear and valid payment screenshot to activate your subscription.
+                                </p>
+                                <button
+                                  onClick={() => setActiveTab('subscriptions')}
+                                  className="mt-2 text-[9px] font-black uppercase text-red-700 underline"
+                                >
+                                  Re-upload Payment Proof →
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="flex justify-between items-start mb-5">
                           <div>
                             <p className="font-black text-lg text-[#1A2316]">
                               {sub.chefId?.name || 'Chef'}

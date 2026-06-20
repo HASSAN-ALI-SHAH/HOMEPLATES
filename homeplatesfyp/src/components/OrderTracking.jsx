@@ -33,6 +33,11 @@ const OrderTracking = () => {
   const [submittingReview, setSubmittingReview] = useState(false);
   const [reviewSubmitted,  setReviewSubmitted]  = useState(false);
 
+  // ─── Cancel states ──────────────────────────────────────────────────────────
+  const [cancelTrackModal, setCancelTrackModal]   = useState(false);
+  const [cancelTrackReason, setCancelTrackReason] = useState('');
+  const [cancellingTrack, setCancellingTrack]     = useState(false);
+
   // ─── Resolve map pins from stored coordinates (instant) ────────────────────
   useEffect(() => {
     if (!order?._id) return;
@@ -147,19 +152,26 @@ const OrderTracking = () => {
   }, [orderId]);
 
   // ─── Cancel order ───────────────────────────────────────────────────────────
+  // FIX: [B16] - Cancel order through custom modal instead of window.confirm
   const handleCancelOrder = async () => {
-    if (!window.confirm('Are you sure you want to cancel this order?')) return;
+    setCancellingTrack(true);
     try {
       const response = await fetch(`http://localhost:5000/api/orders/${orderId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
-        body: JSON.stringify({ status: 'cancelled', cancellationReason: 'Cancelled by customer' }),
+        body: JSON.stringify({ status: 'cancelled', cancellationReason: cancelTrackReason || 'Cancelled by customer' }),
       });
-      if (response.ok) { toast.success('Order cancelled successfully!'); fetchOrder(); }
-      else              { toast.error('Failed to cancel order.'); }
+      if (response.ok) {
+        toast.success('Order cancelled successfully!');
+        setCancelTrackModal(false);
+        setCancelTrackReason('');
+        fetchOrder();
+      }
+      else { toast.error('Failed to cancel order.'); }
     } catch (err) {
-      console.error(err);
       toast.error('Error cancelling order');
+    } finally {
+      setCancellingTrack(false);
     }
   };
 
@@ -218,6 +230,31 @@ const OrderTracking = () => {
         {/* ── LEFT: MAP / REVIEW (7 cols) ─────────────────────────────────────── */}
         <div className="lg:col-span-7 flex flex-col gap-6">
 
+          {/* B10: Delivery Failed Banner */}
+          {order.status === 'delivery-failed' && (
+            <div className="bg-red-50 border-2 border-red-200 p-6 rounded-[30px] flex items-start gap-4 shadow-sm">
+              <AlertTriangle className="text-red-500 mt-1 flex-shrink-0" size={24} />
+              <div>
+                <h4 className="font-black text-red-700 uppercase text-sm">⚠️ Delivery Failed</h4>
+                <p className="text-xs text-red-600 font-bold mt-1">
+                  {order.failureReason ? `Reason: ${order.failureReason}` : 'Delivery was unsuccessful.'}
+                </p>
+                <p className="text-xs text-gray-500 font-bold mt-2">Your order is being reviewed by the chef. You\'ll be notified when it\'s resolved.</p>
+              </div>
+            </div>
+          )}
+
+          {/* B12: Rider Cancelled Banner */}
+          {order.status === 'rider_cancelled' && (
+            <div className="bg-orange-50 border-2 border-orange-200 p-6 rounded-[30px] flex items-start gap-4 shadow-sm">
+              <AlertTriangle className="text-orange-500 mt-1 flex-shrink-0" size={24} />
+              <div>
+                <h4 className="font-black text-orange-700 uppercase text-sm">⚠️ Rider Cancelled</h4>
+                <p className="text-xs text-orange-600 font-bold mt-1">The rider cancelled this delivery. The chef is finding a new rider for you.</p>
+              </div>
+            </div>
+          )}
+
           {/* Cancellation Alert */}
           {order.status === 'cancelled' && (
             <div className="bg-red-50 border-2 border-red-200 p-6 rounded-[30px] flex items-start gap-4 shadow-sm">
@@ -225,6 +262,28 @@ const OrderTracking = () => {
               <div>
                 <h4 className="font-black text-red-700 uppercase text-sm">Order Cancelled</h4>
                 <p className="text-xs text-red-600 font-bold mt-1">Reason: {order.cancellationReason || 'Cancelled by chef/customer'}</p>
+              </div>
+            </div>
+          )}
+
+          {/* B13: Cancel Track Modal */}
+          {cancelTrackModal && (
+            <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="bg-white rounded-[35px] p-8 max-w-sm w-full shadow-2xl">
+                <h3 className="font-black text-lg uppercase italic mb-2 text-red-600">Cancel Order?</h3>
+                <p className="text-xs text-gray-500 font-bold mb-4">Please provide a reason for cancellation.</p>
+                <textarea
+                  value={cancelTrackReason}
+                  onChange={e => setCancelTrackReason(e.target.value)}
+                  placeholder="Reason (required)..."
+                  className="w-full border-2 border-gray-200 rounded-2xl p-3 text-sm font-bold outline-none focus:border-red-400 resize-none h-20 mb-4"
+                />
+                <div className="flex gap-3">
+                  <button onClick={() => setCancelTrackModal(false)} className="flex-1 py-3 bg-gray-100 rounded-2xl font-black text-[10px] uppercase">Back</button>
+                  <button onClick={handleCancelOrder} disabled={!cancelTrackReason.trim() || cancellingTrack} className="flex-1 py-3 bg-red-500 text-white rounded-2xl font-black text-[10px] uppercase disabled:opacity-50">
+                    {cancellingTrack ? 'Cancelling...' : 'Confirm'}
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -356,7 +415,7 @@ const OrderTracking = () => {
                 </div>
               )}
 
-              {/* Floating Rider Info Card */}
+              {/* B13: Floating Rider Info Card — only shown when rider has been assigned */}
               {order.rider && (
                 <div className="absolute bottom-6 left-6 right-6 bg-[#1A2316] p-5 rounded-[30px] flex items-center justify-between shadow-2xl z-[1001]">
                   <div className="flex items-center gap-4">
@@ -366,7 +425,10 @@ const OrderTracking = () => {
                     <div>
                       <h4 className="text-white font-black text-xs uppercase italic">Rider: {order.rider.name}</h4>
                       <p className="text-gray-400 text-[10px] font-bold uppercase tracking-tighter">
-                        {order.rider.phone ? `📞 ${order.rider.phone}` : 'En route to you'}
+                        {/* B13: Only show phone when order is picked-up or out-for-delivery */}
+                        {['picked-up', 'out-for-delivery'].includes(order.status) && order.rider.phone
+                          ? `📞 ${order.rider.phone}`
+                          : 'En route to kitchen'}
                       </p>
                     </div>
                   </div>
@@ -377,7 +439,8 @@ const OrderTracking = () => {
                         Live
                       </span>
                     )}
-                    {order.rider.phone && (
+                    {/* B13: Only show call button when in transit */}
+                    {['picked-up', 'out-for-delivery'].includes(order.status) && order.rider.phone && (
                       <a href={`tel:${order.rider.phone}`}
                         className="p-3 bg-white/10 text-white rounded-2xl hover:bg-[#FBBF24] hover:text-[#1A2316] transition-all">
                         <Phone size={16}/>
@@ -461,8 +524,8 @@ const OrderTracking = () => {
               </div>
             </div>
 
-            {order.status === 'pending' && (
-              <button onClick={handleCancelOrder}
+            {['pending', 'accepted'].includes(order.status) && (
+              <button onClick={() => setCancelTrackModal(true)}
                 className="w-full mt-6 py-4 bg-red-50 text-red-500 rounded-2xl font-black text-[10px] uppercase tracking-widest border border-red-200 hover:bg-red-500 hover:text-white transition-all">
                 Cancel Order
               </button>

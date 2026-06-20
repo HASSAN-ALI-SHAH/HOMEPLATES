@@ -25,6 +25,8 @@ const ChefProfile = ({ handleAddToCart }) => {
   const [isFavorite, setIsFavorite] = useState(false);
   const [selectedRecipe, setSelectedRecipe] = useState(null);
   const [subscribing, setSubscribing] = useState(false);
+  // FIX: [B15] - Food categories selection state
+  const [selectedCategory, setSelectedCategory] = useState('All');
 
   // Review States
   const [userRating, setUserRating] = useState(0);
@@ -479,6 +481,25 @@ const ChefProfile = ({ handleAddToCart }) => {
                 />
               </div>
 
+              {/* FIX: [B15] - Food categories filters tag list */}
+              {menuItems.length > 0 && (
+                <div className="flex flex-wrap gap-2 py-2">
+                  {['All', ...new Set(menuItems.map(item => item.category).filter(Boolean))].map(cat => (
+                    <button
+                      key={cat}
+                      onClick={() => setSelectedCategory(cat)}
+                      className={`px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-wider transition-all duration-300 ${
+                        selectedCategory === cat
+                          ? 'bg-[#1A2316] text-[#FBBF24] shadow-md scale-105'
+                          : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700'
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {menuItems.length === 0 ? (
                 <div className="flex flex-col items-center py-16 text-gray-300">
                   <ChefHat size={56} className="mb-4 opacity-20" />
@@ -488,6 +509,7 @@ const ChefProfile = ({ handleAddToCart }) => {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                   {menuItems
                     .filter(i => i.name.toLowerCase().includes(menuSearch.toLowerCase()))
+                    .filter(i => selectedCategory === 'All' || i.category === selectedCategory)
                     .map(item => (
                       <div
                         key={item._id}

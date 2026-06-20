@@ -18,7 +18,11 @@ const orderSchema = new mongoose.Schema({
     paymentMethod: { type: String, enum: ['cash', 'wallet'], default: 'cash' },
     status: { 
         type: String, 
-        enum: ['pending', 'accepted', 'preparing', 'ready-for-pickup', 'picked-up', 'out-for-delivery', 'delivered', 'cancelled', 'delivery-failed'], 
+        enum: [
+            'pending', 'accepted', 'preparing', 'ready-for-pickup',
+            'picked-up', 'out-for-delivery', 'delivered',
+            'cancelled', 'delivery-failed', 'rider_cancelled'
+        ], 
         default: 'pending' 
     },
     
@@ -40,6 +44,7 @@ const orderSchema = new mongoose.Schema({
     isSubscriptionOrder: { type: Boolean, default: false },
     subscriptionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Subscription' },
     cancellationReason: { type: String },
+    failureReason: { type: String },            // B8/B9: reason rider failed delivery
     orderDate: { type: Date, default: Date.now },
 
     ignoredBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],

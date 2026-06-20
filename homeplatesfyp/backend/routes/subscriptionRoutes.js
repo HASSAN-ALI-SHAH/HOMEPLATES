@@ -9,6 +9,7 @@ const authMiddleware = require('../middleware/auth');
 const multer = require('multer');
 const path = require('path');
 const socketHelper = require('../socket');
+const sendEmail = require('../utils/mailer');
 const fs = require('fs');
 
 // Ensure uploads directory exists
@@ -342,23 +343,63 @@ router.post('/subscribe-plan', upload.single('screenshot'), async (req, res) => 
 });
 
 // 12. Admin verifies payment screenshot (approve / reject)
+// B3: Notify user on rejection; B4: Notify user + chef on approval
 router.patch('/:id/verify-payment', authMiddleware, adminOnly, async (req, res) => {
   try {
     const { action } = req.body; // 'approve' | 'reject'
-    const sub = await Subscription.findById(req.params.id);
+    const sub = await Subscription.findById(req.params.id)
+      .populate('userId', 'name email')
+      .populate('chefId', 'name');
     if (!sub) return res.status(404).json({ message: "Subscription not found" });
+
+    const io = socketHelper.getIo();
 
     if (action === 'approve') {
       sub.paymentStatus = 'approved';
       sub.status = 'active';
+      await sub.save();
+
+      // B4: Notify user in real-time — subscription is now active
+      io.to(`user_${sub.userId._id}`).emit('payment_approved', {
+        subscriptionId: sub._id,
+        message: `✅ Your payment for the ${sub.planType} meal plan has been approved! Your subscription is now active.`
+      });
+      // B4: Notify chef of new confirmed subscriber
+      io.to(`chef_${sub.chefId._id}`).emit('new_order_notification', {
+        status: 'subscription_approved',
+        message: `💰 New subscriber confirmed! ${sub.userId.name} has an active ${sub.planType} plan with you.`
+      });
+
     } else if (action === 'reject') {
       sub.paymentStatus = 'rejected';
-      sub.status = 'expired';
+      sub.status = 'payment_failed'; // B3: distinct failed state
+      await sub.save();
+
+      // B3: Notify user in real-time
+      io.to(`user_${sub.userId._id}`).emit('payment_rejected', {
+        subscriptionId: sub._id,
+        message: '❌ Your subscription payment was rejected. Please re-upload a valid payment screenshot from your profile.'
+      });
+
+      // B3: Send rejection email to user
+      if (sub.userId.email) {
+        const emailHtml = `
+          <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 5px;">
+            <h2 style="color: #e53e3e;">Subscription Payment Declined</h2>
+            <p>Hello ${sub.userId.name},</p>
+            <p>Your payment proof for the <strong>${sub.planType}</strong> meal plan subscription has been reviewed and <strong>rejected</strong>.</p>
+            <p>This may be due to an unclear screenshot, incorrect amount, or unverifiable details.</p>
+            <p>Please log in to your HomePlates profile and re-upload a valid payment proof to re-activate your subscription.</p>
+            <p>Regards,<br/>HomePlates Team</p>
+          </div>
+        `;
+        await sendEmail(sub.userId.email, 'HomePlates — Subscription Payment Rejected', emailHtml).catch(() => {});
+      }
+
     } else {
       return res.status(400).json({ message: "Invalid action. Use 'approve' or 'reject'." });
     }
 
-    await sub.save();
     res.json({ message: `Subscription payment ${action}d successfully`, subscription: sub });
   } catch (err) {
     res.status(500).json({ error: err.message });

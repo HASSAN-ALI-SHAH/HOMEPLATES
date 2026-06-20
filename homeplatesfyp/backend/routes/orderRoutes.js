@@ -10,6 +10,11 @@ const authMiddleware = require('../middleware/auth');
 module.exports = (io) => {
   const router = express.Router();
 
+  // ─── Helper: emit notification safely ─────────────────────────────────────
+  const safeEmit = (room, event, data) => {
+    try { io.to(room).emit(event, data); } catch (_) {}
+  };
+
   // ----------------------------------------------------
   // 1. Place a New Order
   // ----------------------------------------------------
@@ -42,7 +47,6 @@ module.exports = (io) => {
         deliveryCharges: deliveryCharges || 150,
         paymentMethod: paymentMethod || 'cash',
         status: 'pending',
-        // Store GPS coordinates at placement time — used directly by map, no geocoding needed
         pickupLocation,
         deliveryLocation:
           deliveryLocation?.lat && deliveryLocation?.lng ? deliveryLocation : undefined,
@@ -50,10 +54,9 @@ module.exports = (io) => {
 
       await newOrder.save();
 
-      // Post-placement: Add earnings to chef's pendingBalance (chef gets the food subtotal)
+      // Post-placement: Add earnings to chef's pendingBalance
       const subtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-      const chefEarning = subtotal;
-      await User.findByIdAndUpdate(chef, { $inc: { pendingBalance: chefEarning } });
+      await User.findByIdAndUpdate(chef, { $inc: { pendingBalance: subtotal } });
 
       // Send Email to Customer
       const customer = await User.findById(user);
@@ -73,7 +76,7 @@ module.exports = (io) => {
       }
 
       // Emit Real-time Socket Event to Chef (new order = pending)
-      io.to(`chef_${chef}`).emit('new_order_notification', {
+      safeEmit(`chef_${chef}`, 'new_order_notification', {
         orderId: newOrder._id,
         status: 'pending',
         message: 'You have a new order!'
@@ -87,15 +90,48 @@ module.exports = (io) => {
 
   // ----------------------------------------------------
   // 2. Get Customer's Orders
+  // B13: Only include rider phone when order is in transit
   // ----------------------------------------------------
   router.get('/my-orders/:userId', async (req, res) => {
     try {
       const orders = await Order.find({ user: req.params.userId })
         .populate('chef', 'name phone specialty kitchenName about img')
-        .populate('rider', 'name phone')
+        .populate('rider', 'name')           // B13: no phone in list fetch
         .populate('items.dishId', 'name img')
-        .sort({ createdAt: -1 });
-      res.json(orders);
+        .sort({ createdAt: -1 })
+        .lean();
+
+      // B13: Conditionally add rider phone only when in active transit
+      const inTransitStatuses = ['picked-up', 'out-for-delivery'];
+      const ordersWithGatedPhone = orders.map(order => {
+        if (order.rider && inTransitStatuses.includes(order.status)) {
+          // Need to fetch phone separately for in-transit orders
+          return { ...order, _riderPhoneVisible: true };
+        }
+        return order;
+      });
+
+      res.json(ordersWithGatedPhone);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ─── B13 helper: Get rider phone for in-transit orders only ────────────────
+  router.get('/:orderId/rider-phone', authMiddleware, async (req, res) => {
+    try {
+      const order = await Order.findById(req.params.orderId)
+        .populate('rider', 'name phone');
+
+      if (!order) return res.status(404).json({ message: 'Order not found' });
+
+      const inTransitStatuses = ['picked-up', 'out-for-delivery'];
+      if (!inTransitStatuses.includes(order.status)) {
+        return res.status(403).json({ message: 'Rider contact details are only available once the order is picked up.' });
+      }
+      if (!order.rider) return res.status(404).json({ message: 'No rider assigned' });
+
+      res.json({ name: order.rider.name, phone: order.rider.phone });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
@@ -128,13 +164,17 @@ module.exports = (io) => {
   router.get('/rider/available', authMiddleware, async (req, res) => {
     try {
       const rider = await User.findById(req.user.id);
-      if (!rider) return res.status(404).json({ message: "Rider not found" });
+      if (!rider) return res.status(404).json({ message: 'Rider not found' });
+
+      // B1: Block suspended riders from fetching available orders
+      if (rider.isActive === false) {
+        return res.status(403).json({ message: 'Your account is suspended. Contact admin.' });
+      }
 
       const riderCity = rider.city || 'Lahore';
       const chefsInCity = await User.find({ role: 'chef', city: riderCity }).select('_id');
       const chefIds = chefsInCity.map(c => c._id);
 
-      // Orders become available for rider when chef marks them 'ready-for-pickup'
       const orders = await Order.find({
         status: 'ready-for-pickup',
         $or: [{ rider: null }, { rider: { $exists: false } }],
@@ -159,7 +199,7 @@ module.exports = (io) => {
     try {
       const order = await Order.findOne({
         rider: req.params.riderId,
-        status: { $nin: ['delivered', 'cancelled'] }
+        status: { $nin: ['delivered', 'cancelled', 'delivery-failed', 'rider_cancelled'] }
       })
         .populate('user', 'name phone address')
         .populate('chef', 'name phone address specialty kitchenName about img location')
@@ -183,32 +223,51 @@ module.exports = (io) => {
         .populate('items.dishId', 'name img price');
 
       if (!order) return res.status(404).json({ message: 'Order not found' });
-      res.json(order);
+
+      // FIX: [B13] - Gate rider phone number based on status
+      const orderObj = order.toObject();
+      const inTransitStatuses = ['picked-up', 'out-for-delivery'];
+      if (orderObj.rider && !inTransitStatuses.includes(orderObj.status)) {
+        delete orderObj.rider.phone;
+      }
+
+      res.json(orderObj);
     } catch (err) {
-      console.error("Error getting order by ID:", err);
       res.status(500).json({ error: err.message });
     }
   });
 
   // ----------------------------------------------------
   // 7. Update Order Status (Linear Flow)
+  // B1: Check rider suspension on status changes
+  // B8: Unassign rider on delivery-failed
+  // B9: Notify chef+user on delivery-failed
+  // B12: Notify chef when rider cancels
   // ----------------------------------------------------
   router.patch('/:orderId/status', authMiddleware, async (req, res) => {
     try {
-      const { status, cancellationReason, riderId } = req.body;
+      const { status, cancellationReason, failureReason, riderId } = req.body;
       const order = await Order.findById(req.params.orderId);
       if (!order) return res.status(404).json({ message: 'Order not found' });
 
       const oldStatus = order.status;
-      if (oldStatus === 'delivered' || oldStatus === 'cancelled' || oldStatus === 'delivery-failed') {
+      if (['delivered', 'cancelled', 'delivery-failed', 'rider_cancelled'].includes(oldStatus)) {
         return res.status(400).json({ message: `Cannot update status. Order is already ${oldStatus}.` });
+      }
+
+      // B1: If a rider is updating status, verify they are not suspended
+      if (req.user && req.user.role === 'rider') {
+        const riderUser = await User.findById(req.user.id);
+        if (!riderUser || riderUser.isActive === false) {
+          return res.status(403).json({ message: 'Your account is suspended. Contact admin.' });
+        }
       }
 
       order.status = status;
       if (cancellationReason) order.cancellationReason = cancellationReason;
+      if (failureReason) order.failureReason = failureReason;
       if (riderId) order.rider = riderId;
 
-      // Update statusHistory
       const updaterId = req.user?.id || riderId || order.chef;
       order.statusHistory.push({ status, updatedBy: updaterId });
 
@@ -217,74 +276,50 @@ module.exports = (io) => {
       const subtotal = order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
       const chefEarning = subtotal;
 
-      // --- DELIVERED ---
+      // ─── DELIVERED ──────────────────────────────────────────────────────────
       if (status === 'delivered') {
         let platformFeePercent = 10;
         try {
           const platformSettings = await Settings.findOne();
           if (platformSettings) platformFeePercent = platformSettings.platformFee;
-        } catch (settingsErr) {
-          console.error("Error fetching settings, using 10% default", settingsErr);
-        }
+        } catch (_) {}
         const commission = Math.round(subtotal * (platformFeePercent / 100));
         const chefEarningNet = chefEarning - commission;
 
-        // Transfer from pendingBalance to active wallet for chef
         await User.findByIdAndUpdate(order.chef, {
           $inc: { wallet: chefEarningNet, pendingBalance: -chefEarning }
         });
         await WalletTransaction.create({
-          chefId: order.chef,
-          type: 'credit',
-          amount: chefEarningNet,
-          orderId: order._id,
-          status: 'approved'
+          chefId: order.chef, type: 'credit', amount: chefEarningNet,
+          orderId: order._id, status: 'approved'
         });
 
-        // Rider payout
         if (order.rider) {
           const deliveryFee = order.deliveryCharges || 150;
           await User.findByIdAndUpdate(order.rider, { $inc: { wallet: deliveryFee } });
           await WalletTransaction.create({
-            chefId: order.rider,
-            type: 'credit',
-            amount: deliveryFee,
-            orderId: order._id,
-            status: 'approved'
+            chefId: order.rider, type: 'credit', amount: deliveryFee,
+            orderId: order._id, status: 'approved'
           });
-
-          // Notify rider of payment
-          io.to(`rider_${order.rider}`).emit('delivery_complete', {
+          safeEmit(`rider_${order.rider}`, 'delivery_complete', {
             orderId: order._id,
             earning: deliveryFee,
             message: `Delivery complete! PKR ${deliveryFee} added to your wallet.`
           });
         }
 
-        // Increment deliveredDays for daily subscription order
         if (order.isSubscriptionOrder) {
           try {
-            let subscription;
-            if (order.subscriptionId) {
-              subscription = await Subscription.findById(order.subscriptionId);
-            } else {
-              subscription = await Subscription.findOne({
-                userId: order.user,
-                chefId: order.chef,
-                status: 'active'
-              });
-            }
+            let subscription = order.subscriptionId
+              ? await Subscription.findById(order.subscriptionId)
+              : await Subscription.findOne({ userId: order.user, chefId: order.chef, status: 'active' });
             if (subscription) {
               subscription.deliveredDays = (subscription.deliveredDays || 0) + 1;
               await subscription.save();
-              console.log(`📈 Incremented subscription (${subscription._id}) deliveredDays to ${subscription.deliveredDays}`);
             }
-          } catch (subErr) {
-            console.error("Failed to update subscription deliveredDays:", subErr);
-          }
+          } catch (_) {}
         }
 
-        // Email customer
         const customer = await User.findById(order.user);
         if (customer && customer.email) {
           await sendEmail(customer.email, `Order Delivered — #${order._id}`,
@@ -292,190 +327,237 @@ module.exports = (io) => {
           );
         }
 
-        // Emit notification to admin
-        try {
-          io.to('admin_room').emit('delivery_update', {
-            message: `Order #${order._id.toString().slice(-6)} has been marked as delivered.`
-          });
-        } catch (socketErr) {
-          console.error("Socket emit failed on delivery complete:", socketErr);
-        }
-
-        // FIX #2: Notify chef their order is delivered
-        io.to(`chef_${order.chef}`).emit('new_order_notification', {
-          orderId: order._id,
-          status: 'delivered',
+        safeEmit('admin_room', 'delivery_update', {
+          message: `Order #${order._id.toString().slice(-6)} has been marked as delivered.`
+        });
+        safeEmit(`chef_${order.chef}`, 'new_order_notification', {
+          orderId: order._id, status: 'delivered',
           message: '✅ Order delivered successfully! Payment added to your wallet.'
         });
 
-      // --- CANCELLED / FAILED ---
-      } else if (status === 'cancelled' || status === 'delivery-failed') {
-        if (oldStatus !== 'delivered' && oldStatus !== 'cancelled' && oldStatus !== 'delivery-failed') {
+      // ─── DELIVERY FAILED ─────────────────────────────────────────────────────
+      // B8: Unassign rider; B9: notify chef + user + admin
+      } else if (status === 'delivery-failed') {
+        // Reverse pending balance from chef (food not delivered)
+        await User.findByIdAndUpdate(order.chef, { $inc: { pendingBalance: -chefEarning } });
+
+        const prevRider = order.rider;
+        order.rider = null;         // B8: unassign rider so they can take new orders
+        await order.save();
+
+        // B9: Notify chef
+        safeEmit(`chef_${order.chef}`, 'new_order_notification', {
+          orderId: order._id, status: 'delivery-failed',
+          message: `⚠️ Delivery failed for Order #${order._id.toString().slice(-6)}. Reason: ${failureReason || 'Unable to deliver'}. Please take action.`
+        });
+        // B9: Notify customer
+        safeEmit(`order_${order._id}`, 'order_status_changed', {
+          orderId: order._id, status: 'delivery-failed',
+          message: `Delivery was unsuccessful. Reason: ${failureReason || 'Rider could not complete delivery'}`
+        });
+        safeEmit(`user_${order.user}`, 'order_notification', {
+          type: 'delivery_failed', orderId: order._id,
+          message: `Your delivery was unsuccessful. Reason: ${failureReason || 'Rider could not complete delivery'}`
+        });
+        // B9: Notify admin
+        safeEmit('admin_room', 'delivery_update', {
+          message: `⚠️ Delivery failed for Order #${order._id.toString().slice(-6)}.`
+        });
+
+        // Send email to customer
+        const customer = await User.findById(order.user);
+        if (customer && customer.email) {
+          await sendEmail(customer.email, `Delivery Issue — Order #${order._id}`,
+            `<h2 style="color:#e53e3e;">Delivery Unsuccessful</h2>
+             <p>Hello ${customer.name},</p>
+             <p>Unfortunately our rider could not complete your delivery for Order <strong>#${order._id}</strong>.</p>
+             <p><strong>Reason:</strong> ${failureReason || 'Rider was unable to deliver'}</p>
+             <p>Your chef is reviewing the situation and will take further action.</p>
+             <p>Regards,<br/>HomePlates Team</p>`
+          ).catch(() => {});
+        }
+
+        return res.json({ message: 'Status updated to delivery-failed!', order });
+
+      // ─── RIDER CANCELLED ─────────────────────────────────────────────────────
+      // B12: distinct rider_cancelled status + notify chef
+      } else if (status === 'rider_cancelled') {
+        const prevRider = order.rider;
+        order.rider = null;
+        order.status = 'rider_cancelled';
+        await order.save();
+
+        // B12: Notify chef immediately
+        const riderUser = prevRider ? await User.findById(prevRider).select('name') : null;
+        safeEmit(`chef_${order.chef}`, 'new_order_notification', {
+          orderId: order._id, status: 'rider_cancelled',
+          message: `⚠️ Rider${riderUser ? (' ' + riderUser.name) : ''} cancelled order #${order._id.toString().slice(-6)}. Please re-assign a rider.`
+        });
+        // Notify customer
+        safeEmit(`order_${order._id}`, 'order_status_changed', {
+          orderId: order._id, status: 'rider_cancelled',
+          message: 'The rider cancelled. Your order is being re-assigned.'
+        });
+        safeEmit(`user_${order.user}`, 'order_notification', {
+          type: 'rider_cancelled', orderId: order._id,
+          message: 'Your rider cancelled. We are finding a new rider for you.'
+        });
+        return res.json({ message: 'Order marked as rider_cancelled, chef notified.', order });
+
+      // ─── CANCELLED / FAILED (legacy) ─────────────────────────────────────────
+      } else if (status === 'cancelled') {
+        if (!['delivered', 'cancelled', 'delivery-failed', 'rider_cancelled'].includes(oldStatus)) {
           await User.findByIdAndUpdate(order.chef, { $inc: { pendingBalance: -chefEarning } });
         }
 
-        // Notify customer via email (only for cancellations)
-        if (status === 'cancelled') {
-          const customer = await User.findById(order.user);
-          const reason = cancellationReason || 'Order was cancelled';
-
-          if (customer && customer.email) {
-            const emailHtml = `
-              <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 5px;">
-                <h2 style="color: #e53e3e;">Order Cancelled</h2>
-                <p>Hello ${customer.name},</p>
-                <p>Unfortunately, your order <strong>#${order._id}</strong> was cancelled.</p>
-                <p><strong>Reason:</strong> ${reason}</p>
-                <p>Please try ordering from another chef or place a new order.</p>
-                <p>We're sorry for the inconvenience.</p>
-                <p>Regards,<br/>HomePlates Team</p>
-              </div>
-            `;
-            await sendEmail(customer.email, `Order Cancelled — #${order._id}`, emailHtml).catch(e => console.error('Email error:', e));
-          }
+        const customer = await User.findById(order.user);
+        const reason = cancellationReason || 'Order was cancelled';
+        if (customer && customer.email) {
+          const emailHtml = `
+            <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 5px;">
+              <h2 style="color: #e53e3e;">Order Cancelled</h2>
+              <p>Hello ${customer.name},</p>
+              <p>Unfortunately, your order <strong>#${order._id}</strong> was cancelled.</p>
+              <p><strong>Reason:</strong> ${reason}</p>
+              <p>Please try ordering from another chef or place a new order.</p>
+              <p>We're sorry for the inconvenience.</p>
+              <p>Regards,<br/>HomePlates Team</p>
+            </div>
+          `;
+          await sendEmail(customer.email, `Order Cancelled — #${order._id}`, emailHtml).catch(() => {});
         }
 
-        // Notify the user via socket in real-time (on tracking page)
-        io.to(`order_${order._id}`).emit('order_cancelled_by_chef', {
-          orderId: order._id,
-          message: `Your order was cancelled. Reason: ${cancellationReason || 'Logistics update'}`,
-          reason: cancellationReason || 'Logistics update'
+        // B16: Notify chef when user/rider cancels
+        safeEmit(`chef_${order.chef}`, 'new_order_notification', {
+          orderId: order._id, status: 'cancelled',
+          message: `Order #${order._id.toString().slice(-6)} was cancelled. Reason: ${reason}`
         });
+        // Notify rider if assigned
+        if (order.rider) {
+          safeEmit(`rider_${order.rider}`, 'order_status_changed', {
+            orderId: order._id, status: 'cancelled',
+            message: 'Order was cancelled.'
+          });
+        }
 
-        // Also notify user via their personal room (even if not on tracking page)
-        io.to(`user_${order.user}`).emit('order_notification', {
-          type: status === 'cancelled' ? 'order_cancelled' : 'delivery_failed',
+        safeEmit(`order_${order._id}`, 'order_cancelled_by_chef', {
           orderId: order._id,
-          message: status === 'cancelled'
-            ? `Your order was cancelled. Reason: ${cancellationReason || 'Logistics update'}`
-            : `Delivery failed for your order. Reason: ${cancellationReason || 'Could not deliver'}`,
+          message: `Your order was cancelled. Reason: ${reason}`,
+          reason
+        });
+        safeEmit(`user_${order.user}`, 'order_notification', {
+          type: 'order_cancelled', orderId: order._id,
+          message: `Your order was cancelled. Reason: ${reason}`
         });
       }
 
-      // Emit real-time updates to customer tracking page
-      io.to(`order_${order._id}`).emit('order_status_changed', { orderId: order._id, status, cancellationReason });
-      
-      // Also push to user's personal room for global notifications
-      io.to(`user_${order.user}`).emit('order_notification', {
-        type: 'status_update',
-        orderId: order._id,
-        status,
+      // Emit real-time updates to customer tracking page and user room
+      safeEmit(`order_${order._id}`, 'order_status_changed', { orderId: order._id, status, cancellationReason });
+      safeEmit(`user_${order.user}`, 'order_notification', {
+        type: 'status_update', orderId: order._id, status,
         message: status === 'delivered'
           ? '✅ Your order has been delivered successfully!'
           : status === 'out-for-delivery'
           ? '🚴 Your order is out for delivery!'
           : `Your order status changed to: ${status}`
       });
-      
-      // Emit real-time updates to Chef Dashboard
-      io.to(`chef_${order.chef}`).emit('new_order_notification', { 
-        orderId: order._id, 
-        status,
+
+      // Emit to Chef Dashboard
+      safeEmit(`chef_${order.chef}`, 'new_order_notification', {
+        orderId: order._id, status,
         message: `Order status updated to: ${status}`
       });
 
       // Emit to Admin Dashboard
-      try {
-        io.to('admin_room').emit('delivery_update', {
-          message: `Order #${order._id.toString().slice(-6)} status updated to ${status}.`
-        });
-      } catch (socketErr) {
-        console.error("Socket emit failed on admin update:", socketErr);
-      }
+      safeEmit('admin_room', 'delivery_update', {
+        message: `Order #${order._id.toString().slice(-6)} status updated to ${status}.`
+      });
 
-      // 🚴 When food is ready — notify online city riders in real-time
+      // Notify riders when order is ready-for-pickup
       if (status === 'ready-for-pickup') {
         const populatedOrder = await Order.findById(order._id)
           .populate('user', 'name phone address')
           .populate('chef', 'name phone address specialty kitchenName about img city')
           .populate('items.dishId', 'name img price');
-        
+
         const chefCity = populatedOrder.chef?.city;
         if (chefCity) {
-          const cityRoom = `riders_${chefCity.toLowerCase()}`;
-          io.to(cityRoom).emit('new_delivery_available', {
+          safeEmit(`riders_${chefCity.toLowerCase()}`, 'new_delivery_available', {
             order: populatedOrder,
-            message: `New delivery request available.`
+            message: 'New delivery request available.'
           });
         }
       }
 
-      // Only notify rider of status changes if not updated by this rider themselves
+      // Notify rider of status changes if not the rider themselves
       const isRiderUpdating = req.user && req.user.role === 'rider';
       if (order.rider && !isRiderUpdating) {
-        io.to(`rider_${order.rider}`).emit('order_status_changed', { orderId: order._id, status });
+        safeEmit(`rider_${order.rider}`, 'order_status_changed', { orderId: order._id, status });
       }
 
       res.json({ message: 'Status updated!', order });
     } catch (err) {
-      console.error("Error updating order status:", err);
       res.status(500).json({ error: err.message });
     }
   });
 
   // ----------------------------------------------------
   // 8. Accept Order (Rider)
-  // FIX #2: After rider accepts, THEN notify chef that rider is coming
+  // B1: Check rider suspension before accepting
   // ----------------------------------------------------
   router.patch('/:orderId/accept', authMiddleware, async (req, res) => {
     try {
       const { riderId } = req.body;
+      const finalRiderId = riderId || req.user.id;
+
+      // B1: Check rider suspension
+      const riderUser = await User.findById(finalRiderId);
+      if (!riderUser) return res.status(404).json({ message: 'Rider not found' });
+      if (riderUser.isActive === false) {
+        return res.status(403).json({ message: 'Your account is suspended. Contact admin to resolve.' });
+      }
+
       const order = await Order.findById(req.params.orderId);
       if (!order) return res.status(404).json({ message: 'Order not found' });
       if (order.rider) return res.status(400).json({ message: 'Order already has a rider' });
 
-      order.rider = riderId || req.user.id;
-      order.status = 'ready-for-pickup'; // Keep status but assign the rider
-      
-      // Update statusHistory
-      order.statusHistory.push({ status: 'rider_accepted', updatedBy: req.user.id || riderId });
-
+      order.rider = finalRiderId;
+      order.status = 'ready-for-pickup';
+      order.statusHistory.push({ status: 'rider_accepted', updatedBy: finalRiderId });
       await order.save();
 
-      // Populate for response
       const populatedOrder = await Order.findById(order._id)
         .populate('user', 'name phone address')
         .populate('chef', 'name phone address specialty kitchenName about img city')
         .populate('items.dishId', 'name img price');
 
-      // FIX #2: ONLY NOW tell the chef a rider has been assigned (rider accepted FIRST)
-      io.to(`chef_${order.chef}`).emit('new_order_notification', {
-        orderId: order._id,
-        status: 'rider_accepted',
-        message: 'A rider has accepted your delivery request.'
+      safeEmit(`chef_${order.chef}`, 'new_order_notification', {
+        orderId: order._id, status: 'rider_accepted',
+        message: `🚴 A rider has accepted your delivery for Order #${order._id.toString().slice(-6)}.`
       });
 
-      // Emit to the order room (tracked by customer)
-      io.to(`order_${order._id}`).emit('order_status_changed', {
-        orderId: order._id,
-        status: 'ready-for-pickup',
-        riderId: order.rider
+      safeEmit(`order_${order._id}`, 'order_status_changed', {
+        orderId: order._id, status: 'ready-for-pickup', riderId: order.rider
       });
 
-      // Confirm to the accepting rider
-      io.to(`rider_${order.rider}`).emit('order_assigned', {
-        orderId: order._id,
-        order: populatedOrder,
+      safeEmit(`rider_${order.rider}`, 'order_assigned', {
+        orderId: order._id, order: populatedOrder,
         message: 'Order accepted successfully!'
       });
 
-      // Notify other riders in the same city this order is taken — so they refresh their list
       const chefCity = populatedOrder.chef?.city;
       if (chefCity) {
-        const cityRoom = `riders_${chefCity.toLowerCase()}`;
-        io.to(cityRoom).emit('order_taken', { orderId: order._id });
+        safeEmit(`riders_${chefCity.toLowerCase()}`, 'order_taken', { orderId: order._id });
       }
 
       res.json({ message: 'Order accepted!', order: populatedOrder });
     } catch (err) {
-      console.error("Error rider accepting order:", err);
       res.status(500).json({ error: err.message });
     }
   });
 
   // ----------------------------------------------------
-  // 9. Reject Order (Rider) — FIX #5: New endpoint
-  // Rider can reject/unassign themselves from an order
+  // 9. Reject Order (Rider) — Rider unassigns themselves
   // ----------------------------------------------------
   router.patch('/:orderId/reject', authMiddleware, async (req, res) => {
     try {
@@ -484,18 +566,13 @@ module.exports = (io) => {
       if (!order) return res.status(404).json({ message: 'Order not found' });
 
       const finalRiderId = riderId || req.user.id;
-      // Only the assigned rider can reject
       if (order.rider && order.rider.toString() !== finalRiderId.toString()) {
         return res.status(403).json({ message: 'Only the assigned rider can reject this order' });
       }
 
-      // Unassign the rider and put order back to ready-for-pickup
       order.rider = null;
       order.status = 'ready-for-pickup';
-      
-      // Update statusHistory
       order.statusHistory.push({ status: 'rider_rejected', updatedBy: finalRiderId });
-
       await order.save();
 
       const populatedOrder = await Order.findById(order._id)
@@ -503,26 +580,20 @@ module.exports = (io) => {
         .populate('chef', 'name phone address specialty kitchenName about img city')
         .populate('items.dishId', 'name img price');
 
-      // Notify chef that the previous rider rejected
-      io.to(`chef_${order.chef}`).emit('new_order_notification', {
-        orderId: order._id,
-        status: 'rider_rejected',
+      safeEmit(`chef_${order.chef}`, 'new_order_notification', {
+        orderId: order._id, status: 'rider_rejected',
         message: '⚠️ A rider rejected your order. Another rider will be assigned soon.'
       });
 
-      // Broadcast back to all online riders in the same city — order is available again
       const chefCity = populatedOrder.chef?.city;
       if (chefCity) {
-        const cityRoom = `riders_${chefCity.toLowerCase()}`;
-        io.to(cityRoom).emit('new_delivery_available', {
-          order: populatedOrder,
-          message: `New delivery request available.`
+        safeEmit(`riders_${chefCity.toLowerCase()}`, 'new_delivery_available', {
+          order: populatedOrder, message: 'New delivery request available.'
         });
       }
 
       res.json({ message: 'Order rejected, re-broadcasting to riders.', order: populatedOrder });
     } catch (err) {
-      console.error("Error rider rejecting order:", err);
       res.status(500).json({ error: err.message });
     }
   });
@@ -539,10 +610,9 @@ module.exports = (io) => {
       order.currentLocation = { lat, lng };
       await order.save();
 
-      io.to(`order_${order._id}`).emit('location_update', { lat, lng });
+      safeEmit(`order_${order._id}`, 'location_update', { lat, lng });
       res.json({ message: 'Location updated', currentLocation: order.currentLocation });
     } catch (err) {
-      console.error("Error updating location:", err);
       res.status(500).json({ error: err.message });
     }
   });
@@ -555,19 +625,129 @@ module.exports = (io) => {
       const order = await Order.findById(req.params.orderId);
       if (!order) return res.status(404).json({ message: 'Order not found' });
 
-      // Add riderId to order's ignoredBy array if not already present
       if (!order.ignoredBy.includes(req.user.id)) {
         order.ignoredBy.push(req.user.id);
-        
-        // Update statusHistory
         order.statusHistory.push({ status: 'rider_ignored', updatedBy: req.user.id });
-        
         await order.save();
       }
 
       res.json({ message: 'Order ignored successfully', order });
     } catch (err) {
-      console.error("Error rider ignoring order:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ----------------------------------------------------
+  // 12. Resolve Delivery Failure (Chef action)
+  // B10: Chef can re-assign riders or cancel order after failure
+  // ----------------------------------------------------
+  router.patch('/:orderId/resolve-failure', authMiddleware, async (req, res) => {
+    try {
+      const { action, cancellationReason } = req.body; // action: 'reassign' | 'cancel'
+      const order = await Order.findById(req.params.orderId)
+        .populate('chef', 'name city');
+
+      if (!order) return res.status(404).json({ message: 'Order not found' });
+      if (order.status !== 'delivery-failed') {
+        return res.status(400).json({ message: 'Order is not in delivery-failed state' });
+      }
+
+      if (action === 'reassign') {
+        order.status = 'ready-for-pickup';
+        order.rider = null;
+        order.statusHistory.push({ status: 'reassigning', updatedBy: req.user.id });
+        await order.save();
+
+        // Notify customer
+        safeEmit(`order_${order._id}`, 'order_status_changed', {
+          orderId: order._id, status: 'ready-for-pickup',
+          message: 'Chef is re-assigning a rider for your order.'
+        });
+        safeEmit(`user_${order.user}`, 'order_notification', {
+          type: 'status_update', orderId: order._id, status: 'ready-for-pickup',
+          message: '🔄 Your order is being reassigned to a new rider.'
+        });
+
+        // Re-broadcast to available riders
+        const chefCity = order.chef?.city;
+        const populatedOrder = await Order.findById(order._id)
+          .populate('user', 'name phone address')
+          .populate('chef', 'name phone address specialty kitchenName about img city')
+          .populate('items.dishId', 'name img price');
+
+        if (chefCity) {
+          safeEmit(`riders_${chefCity.toLowerCase()}`, 'new_delivery_available', {
+            order: populatedOrder, message: 'Re-assigned delivery request available.'
+          });
+        }
+
+        return res.json({ message: 'Order re-assigned to available riders.', order });
+
+      } else if (action === 'cancel') {
+        const subtotal = order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+        order.status = 'cancelled';
+        order.cancellationReason = cancellationReason || 'Delivery failed, order cancelled by chef.';
+        order.statusHistory.push({ status: 'cancelled', updatedBy: req.user.id });
+        await order.save();
+
+        const customer = await User.findById(order.user);
+        if (customer && customer.email) {
+          await sendEmail(customer.email, `Order Cancelled — #${order._id}`,
+            `<h2 style="color:#e53e3e;">Order Cancelled</h2>
+             <p>Hello ${customer.name},</p>
+             <p>Your order <strong>#${order._id}</strong> was cancelled after a delivery failure.</p>
+             <p>We apologize for the inconvenience.</p>
+             <p>Regards,<br/>HomePlates Team</p>`
+          ).catch(() => {});
+        }
+
+        safeEmit(`order_${order._id}`, 'order_cancelled_by_chef', {
+          orderId: order._id, message: 'Order cancelled due to delivery failure.', reason: order.cancellationReason
+        });
+        safeEmit(`user_${order.user}`, 'order_notification', {
+          type: 'order_cancelled', orderId: order._id,
+          message: 'Your order was cancelled after a delivery failure. We apologize.'
+        });
+
+        return res.json({ message: 'Order cancelled after delivery failure.', order });
+      }
+
+      return res.status(400).json({ message: "Invalid action. Use 'reassign' or 'cancel'." });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ----------------------------------------------------
+  // 13. Re-broadcast Order to Riders (Chef — B11)
+  // For when order is stuck in ready-for-pickup with no rider
+  // ----------------------------------------------------
+  router.patch('/:orderId/rebroadcast', authMiddleware, async (req, res) => {
+    try {
+      const order = await Order.findById(req.params.orderId)
+        .populate('user', 'name phone address')
+        .populate('chef', 'name phone address specialty kitchenName about img city')
+        .populate('items.dishId', 'name img price');
+
+      if (!order) return res.status(404).json({ message: 'Order not found' });
+      if (order.status !== 'ready-for-pickup') {
+        return res.status(400).json({ message: 'Order must be in ready-for-pickup status to re-broadcast.' });
+      }
+
+      const chefCity = order.chef?.city;
+      if (chefCity) {
+        safeEmit(`riders_${chefCity.toLowerCase()}`, 'new_delivery_available', {
+          order, message: '🔔 Urgent: Delivery request still available!'
+        });
+      }
+
+      // Also notify admin
+      safeEmit('admin_room', 'delivery_update', {
+        message: `⚠️ Order #${order._id.toString().slice(-6)} has no rider — re-broadcast triggered.`
+      });
+
+      res.json({ message: 'Order re-broadcast to available riders.' });
+    } catch (err) {
       res.status(500).json({ error: err.message });
     }
   });

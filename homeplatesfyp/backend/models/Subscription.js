@@ -13,7 +13,8 @@ const subscriptionSchema = new mongoose.Schema({
     deliveredDays: { type: Number, default: 0 },
     totalCost: { type: Number },
     isPaused: { type: Boolean, default: false },
-    status: { type: String, enum: ['pending', 'active', 'expired', 'paused'], default: 'pending' },
+    // B3: added 'payment_failed' to status enum
+    status: { type: String, enum: ['pending', 'active', 'expired', 'paused', 'payment_failed'], default: 'pending' },
     paymentScreenshot: { type: String },
     paymentStatus: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
     payoutStatus: { type: String, enum: ['none', 'pending', 'paid'], default: 'none' },

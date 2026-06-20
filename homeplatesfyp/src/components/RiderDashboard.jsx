@@ -30,9 +30,18 @@ const RiderDashboard = ({ user: propUser, onLogout, onUserUpdate }) => {
   const [walletData, setWalletData] = useState({ totalBalance: 0, pendingBalance: 0, transactions: [] });
 
   // New order alert modal state
-  const [newOrderAlert, setNewOrderAlert] = useState(null); // holds the incoming order object
+  const [newOrderAlert, setNewOrderAlert] = useState(null);
   const [acceptingOrder, setAcceptingOrder] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+
+  // B7: Confirm modals for destructive actions
+  const [cancelModal, setCancelModal] = useState(false);
+  const [failModal, setFailModal] = useState(false);
+  const [rejectModal, setRejectModal] = useState(false);
+  const [actionReason, setActionReason] = useState('');
+
+  // B1: Check suspension on mount
+  const isSuspended = currentUser.isActive === false;
 
   // ─── Live tracking state ────────────────────────────────────────────────────
   const [riderCoords,    setRiderCoords]    = useState(null); // own GPS position
@@ -283,10 +292,10 @@ const RiderDashboard = ({ user: propUser, onLogout, onUserUpdate }) => {
     }
   };
 
-  // FIX #5: Rider can reject / unassign themselves from an order
+  // B7: Rider rejects order — uses modal instead of window.confirm
   const rejectOrder = async () => {
     if (!activeOrder) return;
-    if (!window.confirm('Are you sure you want to reject this order? It will be reassigned to another rider.')) return;
+    setRejectModal(false);
     setUpdatingStatus(true);
     try {
       await API.patch(`/api/orders/${activeOrder._id}/reject`, { riderId });
@@ -296,6 +305,48 @@ const RiderDashboard = ({ user: propUser, onLogout, onUserUpdate }) => {
       setActiveTab('available');
     } catch (e) {
       toast.error('Error rejecting order: ' + (e.response?.data?.message || e.message));
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
+
+  // B7: Cancel delivery — uses modal
+  const cancelDelivery = async () => {
+    if (!activeOrder || !actionReason.trim()) return;
+    setCancelModal(false);
+    setUpdatingStatus(true);
+    try {
+      await API.patch(`/api/orders/${activeOrder._id}/status`, {
+        status: 'rider_cancelled', cancellationReason: actionReason, riderId
+      }, authH);
+      addNotification('❌ Delivery Cancelled', 'You cancelled the delivery. Chef has been notified.');
+      setActiveOrder(null);
+      setActionReason('');
+      await fetchData();
+      setActiveTab('available');
+    } catch (e) {
+      toast.error('Error cancelling: ' + (e.response?.data?.message || e.message));
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
+
+  // B7/B8: Mark delivery as failed — uses modal
+  const markDeliveryFailed = async () => {
+    if (!activeOrder || !actionReason.trim()) return;
+    setFailModal(false);
+    setUpdatingStatus(true);
+    try {
+      await API.patch(`/api/orders/${activeOrder._id}/status`, {
+        status: 'delivery-failed', failureReason: actionReason, riderId
+      }, authH);
+      addNotification('⚠️ Delivery Failed', 'Order marked as delivery failed. Chef has been notified.');
+      setActiveOrder(null);
+      setActionReason('');
+      await fetchData();
+      setActiveTab('available');
+    } catch (e) {
+      toast.error('Error updating status: ' + (e.response?.data?.message || e.message));
     } finally {
       setUpdatingStatus(false);
     }
@@ -353,6 +404,94 @@ const RiderDashboard = ({ user: propUser, onLogout, onUserUpdate }) => {
   // ─── RENDER ──────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#F4F7F2] flex flex-col md:flex-row font-sans text-[#1A2316]">
+
+      {/* B1: Suspended Account Banner — blocks entire UI */}
+      {isSuspended && (
+        <div className="fixed inset-0 z-[99999] bg-black/80 backdrop-blur-md flex items-center justify-center p-6">
+          <div className="bg-white rounded-[40px] p-10 max-w-md w-full text-center shadow-2xl border-4 border-red-500">
+            <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <AlertCircle size={40} className="text-red-500" />
+            </div>
+            <h2 className="text-2xl font-black uppercase italic text-red-600 mb-3">Account Suspended</h2>
+            <p className="text-gray-600 font-bold text-sm leading-relaxed mb-6">
+              Your rider account has been suspended by HomePlates administration.
+              You cannot accept or complete deliveries until your account is reinstated.
+            </p>
+            <div className="bg-red-50 p-4 rounded-2xl mb-6">
+              <p className="text-[10px] font-black uppercase text-red-700 tracking-wider">
+                Contact Support
+              </p>
+              <p className="text-sm text-red-600 font-bold mt-1">support@homeplates.pk</p>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="w-full bg-red-500 text-white py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-red-600 transition-all"
+            >
+              Sign Out
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* B7: Reject Order Modal */}
+      {rejectModal && (
+        <div className="fixed inset-0 z-[9998] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-[35px] p-8 max-w-sm w-full shadow-2xl">
+            <h3 className="font-black text-lg uppercase italic mb-2">Reject Order?</h3>
+            <p className="text-xs text-gray-500 font-bold mb-6">This order will be re-assigned to another available rider. Are you sure?</p>
+            <div className="flex gap-3">
+              <button onClick={() => setRejectModal(false)} className="flex-1 py-3 bg-gray-100 rounded-2xl font-black text-[10px] uppercase">Cancel</button>
+              <button onClick={rejectOrder} disabled={updatingStatus} className="flex-1 py-3 bg-red-500 text-white rounded-2xl font-black text-[10px] uppercase hover:bg-red-600 transition-all disabled:opacity-50">
+                {updatingStatus ? 'Processing...' : 'Yes, Reject'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* B7: Cancel Delivery Modal */}
+      {cancelModal && (
+        <div className="fixed inset-0 z-[9998] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-[35px] p-8 max-w-sm w-full shadow-2xl">
+            <h3 className="font-black text-lg uppercase italic mb-2">Cancel Delivery?</h3>
+            <p className="text-xs text-gray-500 font-bold mb-4">The chef and customer will be notified. Please provide a reason.</p>
+            <textarea
+              value={actionReason}
+              onChange={e => setActionReason(e.target.value)}
+              placeholder="Reason for cancellation (required)..."
+              className="w-full border-2 border-gray-200 rounded-2xl p-3 text-sm font-bold outline-none focus:border-red-400 resize-none h-24 mb-4"
+            />
+            <div className="flex gap-3">
+              <button onClick={() => { setCancelModal(false); setActionReason(''); }} className="flex-1 py-3 bg-gray-100 rounded-2xl font-black text-[10px] uppercase">Back</button>
+              <button onClick={cancelDelivery} disabled={!actionReason.trim() || updatingStatus} className="flex-1 py-3 bg-red-500 text-white rounded-2xl font-black text-[10px] uppercase hover:bg-red-600 transition-all disabled:opacity-50">
+                {updatingStatus ? 'Processing...' : 'Confirm Cancel'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* B7: Delivery Failed Modal */}
+      {failModal && (
+        <div className="fixed inset-0 z-[9998] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-[35px] p-8 max-w-sm w-full shadow-2xl">
+            <h3 className="font-black text-lg uppercase italic mb-2">Mark as Failed?</h3>
+            <p className="text-xs text-gray-500 font-bold mb-4">The chef and customer will be notified. Please describe what happened.</p>
+            <textarea
+              value={actionReason}
+              onChange={e => setActionReason(e.target.value)}
+              placeholder="Reason for delivery failure (required)..."
+              className="w-full border-2 border-gray-200 rounded-2xl p-3 text-sm font-bold outline-none focus:border-orange-400 resize-none h-24 mb-4"
+            />
+            <div className="flex gap-3">
+              <button onClick={() => { setFailModal(false); setActionReason(''); }} className="flex-1 py-3 bg-gray-100 rounded-2xl font-black text-[10px] uppercase">Back</button>
+              <button onClick={markDeliveryFailed} disabled={!actionReason.trim() || updatingStatus} className="flex-1 py-3 bg-orange-500 text-white rounded-2xl font-black text-[10px] uppercase hover:bg-orange-600 transition-all disabled:opacity-50">
+                {updatingStatus ? 'Processing...' : 'Confirm Failed'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ══════════════════════════════════════════
           🚨 NEW ORDER ALERT MODAL
@@ -993,62 +1132,32 @@ const RiderDashboard = ({ user: propUser, onLogout, onUserUpdate }) => {
                     })}
                   </div>
 
-                  {/* FIX #5: Reject Order button — only available at ready-for-pickup stage */}
+                  {/* B7: Reject Order button — modal instead of confirm */}
                   {activeOrder.status === 'ready-for-pickup' && (
                     <div className="mt-6 pt-6 border-t border-gray-50">
                       <button
-                        onClick={rejectOrder}
+                        onClick={() => setRejectModal(true)}
                         disabled={updatingStatus}
                         className="w-full bg-red-50 text-red-600 border-2 border-red-100 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-red-100 transition-all disabled:opacity-50"
                       >
-                        {updatingStatus ? 'Processing...' : '❌ Reject Order — Reassign to Another Rider'}
+                        ❌ Reject Order — Reassign to Another Rider
                       </button>
                       <p className="text-[9px] text-gray-400 font-bold text-center mt-2">Only use if you cannot fulfill this delivery.</p>
                     </div>
                   )}
 
-                  {/* Cancel Delivery & Delivery Failed buttons — available at picked-up and out-for-delivery stages */}
+                  {/* B7: Cancel Delivery & Delivery Failed — modal instead of prompt */}
                   {(activeOrder.status === 'picked-up' || activeOrder.status === 'out-for-delivery') && (
                     <div className="mt-6 pt-6 border-t border-gray-50 flex gap-3">
                       <button
-                        onClick={async () => {
-                          const reason = prompt('Enter cancellation reason:') || 'Cancelled by rider';
-                          if (reason) {
-                            setUpdatingStatus(true);
-                            try {
-                              await API.patch(`/api/orders/${activeOrder._id}/status`, { status: 'cancelled', cancellationReason: reason, riderId }, authH);
-                              addNotification('❌ Delivery Cancelled', 'You cancelled the delivery.');
-                              setActiveOrder(null);
-                              await fetchData();
-                            } catch (e) {
-                              toast.error('Error cancelling: ' + (e.response?.data?.message || e.message));
-                            } finally {
-                              setUpdatingStatus(false);
-                            }
-                          }
-                        }}
+                        onClick={() => { setActionReason(''); setCancelModal(true); }}
                         disabled={updatingStatus}
                         className="flex-1 bg-red-50 text-red-600 border-2 border-red-100 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-red-100 transition-all disabled:opacity-50"
                       >
                         Cancel Delivery
                       </button>
                       <button
-                        onClick={async () => {
-                          const reason = prompt('Enter reason for delivery failure:') || 'Failed to deliver';
-                          if (reason) {
-                            setUpdatingStatus(true);
-                            try {
-                              await API.patch(`/api/orders/${activeOrder._id}/status`, { status: 'delivery-failed', cancellationReason: reason, riderId }, authH);
-                              addNotification('⚠️ Delivery Failed', 'Order marked as delivery failed.');
-                              setActiveOrder(null);
-                              await fetchData();
-                            } catch (e) {
-                              toast.error('Error updating status: ' + (e.response?.data?.message || e.message));
-                            } finally {
-                              setUpdatingStatus(false);
-                            }
-                          }
-                        }}
+                        onClick={() => { setActionReason(''); setFailModal(true); }}
                         disabled={updatingStatus}
                         className="flex-1 bg-orange-50 text-orange-600 border-2 border-orange-100 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-orange-100 transition-all disabled:opacity-50"
                       >

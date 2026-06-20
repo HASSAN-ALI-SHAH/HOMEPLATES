@@ -34,6 +34,7 @@ const AdminDashboard = () => {
   const [supportFilter, setSupportFilter] = useState('open');
   const [replyText, setReplyText] = useState({});
   const [ticketSubmitting, setTicketSubmitting] = useState({});
+  const [riderVerifiedFilter, setRiderVerifiedFilter] = useState('all'); // B2: 'all' | 'verified' | 'unverified'
 
   const addNotification = useCallback((title, body) => {
     setNotifications(prev => [
@@ -607,14 +608,42 @@ const AdminDashboard = () => {
                   <p className="text-xs font-bold text-gray-300">Logistics and Delivery Rider Fleet Monitoring. View rider status, city location, active/accepted deliveries, ignored requests, and chronological status change logs.</p>
                 </div>
 
-                {riderMonitoring.length === 0 ? (
+                {/* B2: Verified filter tabs */}
+                <div className="flex gap-3">
+                  {[{ label: 'All Riders', value: 'all' }, { label: 'Verified', value: 'verified' }, { label: 'Unverified', value: 'unverified' }].map(f => (
+                    <button
+                      key={f.value}
+                      onClick={() => setRiderVerifiedFilter(f.value)}
+                      className={`px-5 py-2.5 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${
+                        riderVerifiedFilter === f.value
+                          ? 'bg-[#1A2316] text-[#FBBF24] shadow-md'
+                          : 'bg-white border border-gray-100 text-gray-500 hover:bg-gray-50'
+                      }`}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* B2: Filter by verified status */}
+                {riderMonitoring.filter(log => {
+                  if (riderVerifiedFilter === 'verified') return log.rider.isVerified === true;
+                  if (riderVerifiedFilter === 'unverified') return log.rider.isVerified !== true;
+                  return true;
+                }).length === 0 ? (
                   <div className="bg-white p-20 rounded-[40px] border border-gray-100 flex flex-col items-center justify-center text-center text-gray-300">
                     <Bike size={48} className="opacity-20 mb-4" />
-                    <p className="font-black uppercase text-xs tracking-widest text-gray-400">No riders registered in system yet</p>
+                    <p className="font-black uppercase text-xs tracking-widest text-gray-400">
+                      {riderMonitoring.length === 0 ? 'No riders registered in system yet' : 'No riders match this filter'}
+                    </p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 gap-6">
-                    {riderMonitoring.map(log => {
+                    {riderMonitoring.filter(log => {
+                    if (riderVerifiedFilter === 'verified') return log.rider.isVerified === true;
+                    if (riderVerifiedFilter === 'unverified') return log.rider.isVerified !== true;
+                    return true;
+                  }).map(log => {
                       const rider = log.rider;
                       return (
                         <div key={rider._id} className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm space-y-6 text-left">

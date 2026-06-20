@@ -7,6 +7,7 @@ const WalletTransaction = require('../models/WalletTransaction');
 const Settings = require('../models/Settings');
 const sendEmail = require('../utils/mailer');
 const authMiddleware = require('../middleware/auth');
+const socketHelper = require('../socket');
 
 // Helper to check if role is admin
 const adminOnly = (req, res, next) => {
@@ -56,6 +57,24 @@ router.put('/verify-chef/:id', authMiddleware, adminOnly, async (req, res) => {
       : `<h2>Kitchen Account Update</h2><p>Unfortunately, your verification was rejected. Reason: <strong>${reason || 'Document mismatch'}</strong>. Please re-upload clear documents on your dashboard.</p>`;
     
     await sendEmail(chef.email, subject, emailHtml);
+
+    // ── Real-time in-app notification to the chef ──
+    try {
+      const io = socketHelper.getIo();
+      if (action === 'approve') {
+        io.to(`chef_${chef._id}`).emit('account_status_update', {
+          status: 'approved',
+          message: '🎉 Congratulations! Your HomePlates chef account has been approved. You can now go online and start accepting orders!'
+        });
+      } else {
+        io.to(`chef_${chef._id}`).emit('account_status_update', {
+          status: 'rejected',
+          message: `❌ Your chef application was rejected. Reason: ${req.body.reason || 'Document mismatch'}. Please re-upload your documents from the dashboard.`
+        });
+      }
+    } catch (socketErr) {
+      console.error('Socket emit failed on chef verification:', socketErr);
+    }
 
     res.json({ message: `Chef ${action === 'approve' ? 'Approved' : 'Rejected'} successfully!`, chef });
   } catch (err) {
@@ -336,6 +355,144 @@ router.get('/daily-deliveries', authMiddleware, adminOnly, async (req, res) => {
       .populate('rider', 'name phone')
       .sort({ orderDate: -1 });
     res.json(deliveries);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get Rider Monitoring Data
+router.get('/riders', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const riders = await User.find({ role: 'rider' }).select('-password');
+    const riderLogs = [];
+
+    for (let rider of riders) {
+      // 1. Assigned/Active orders (orders assigned to rider, status not delivered/cancelled/failed)
+      const assignedOrders = await Order.find({
+        rider: rider._id,
+        status: { $nin: ['delivered', 'cancelled', 'delivery-failed'] }
+      }).populate('user chef');
+
+      // 2. Accepted orders (all orders accepted by this rider, including completed/cancelled/in-progress/failed)
+      const acceptedOrders = await Order.find({
+        rider: rider._id
+      }).populate('user chef');
+
+      // 3. Ignored requests (orders where this rider is in ignoredBy)
+      const ignoredOrders = await Order.find({
+        ignoredBy: rider._id
+      }).populate('user chef');
+
+      // 4. Delivery status history across all orders updated by this rider
+      const statusHistoryOrders = await Order.find({
+        'statusHistory.updatedBy': rider._id
+      }).populate('user chef');
+
+      const historyLog = [];
+      for (let order of statusHistoryOrders) {
+        for (let history of order.statusHistory) {
+          if (history.updatedBy && history.updatedBy.toString() === rider._id.toString()) {
+            historyLog.push({
+              orderId: order._id,
+              status: history.status,
+              timestamp: history.timestamp,
+              chefName: order.chef?.name,
+              customerName: order.user?.name
+            });
+          }
+        }
+      }
+      // Sort history log by timestamp descending
+      historyLog.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+      riderLogs.push({
+        rider: {
+          _id: rider._id,
+          name: rider.name,
+          email: rider.email,
+          phone: rider.phone,
+          city: rider.city || 'Lahore',
+          isActive: rider.isActive,
+          vehicle: rider.vehicle || 'Not specified'
+        },
+        assignedOrders,
+        acceptedOrders,
+        ignoredOrders,
+        historyLog
+      });
+    }
+
+    res.json(riderLogs);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// 6. Help & Support Management (Admin)
+// ----------------------------------------------------
+
+const SupportTicket = require('../models/SupportTicket');
+
+// Get all support tickets (with optional status filter)
+router.get('/support', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const { status } = req.query;
+    const query = status ? { status } : {};
+    const tickets = await SupportTicket.find(query).sort({ createdAt: -1 });
+    res.json(tickets);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Reply to a ticket and optionally mark as resolved
+router.patch('/support/:id', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const { adminReply, status } = req.body;
+    const ticket = await SupportTicket.findById(req.params.id);
+    if (!ticket) return res.status(404).json({ message: 'Ticket not found' });
+
+    if (adminReply !== undefined) ticket.adminReply = adminReply;
+    if (status && ['open', 'in-progress', 'resolved'].includes(status)) ticket.status = status;
+    if (adminReply) {
+      ticket.repliedAt = new Date();
+      // Send notification email to the user
+      try {
+        const emailHtml = `
+          <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 5px;">
+            <h2 style="color: #1A2316;">HomePlates Support Ticket Response</h2>
+            <p>Hello ${ticket.name},</p>
+            <p>Our support team has responded to your inquiry:</p>
+            <div style="background-color: #f7f9f6; padding: 15px; border-left: 4px solid #FBBF24; margin: 15px 0;">
+              <strong>Your Query:</strong><br/>
+              <p style="margin-top: 5px; color: #555;">${ticket.message}</p>
+            </div>
+            <div style="background-color: #f0f4f1; padding: 15px; border-left: 4px solid #1A2316; margin: 15px 0;">
+              <strong>Admin Response:</strong><br/>
+              <p style="margin-top: 5px; color: #1A2316; font-weight: bold;">${adminReply}</p>
+            </div>
+            <p>Regards,<br/>HomePlates Support Team</p>
+          </div>
+        `;
+        await sendEmail(ticket.email, `HomePlates Support: Response to "${ticket.subject}"`, emailHtml);
+      } catch (emailErr) {
+        console.error("Failed to send support response email:", emailErr.message);
+      }
+    }
+
+    await ticket.save();
+    res.json({ message: 'Ticket updated successfully', ticket });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete a ticket
+router.delete('/support/:id', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    await SupportTicket.findByIdAndDelete(req.params.id);
+    res.json({ message: 'Ticket deleted' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

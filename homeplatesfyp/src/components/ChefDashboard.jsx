@@ -4,8 +4,10 @@ import { ChefHat, Bell, Calculator, ScrollText, LayoutDashboard, Star, TrendingU
 import API from '../api';
 import { io } from 'socket.io-client';
 import { toast } from '../utils/toast';
+import LiveTrackingMap from './LiveTrackingMap';
+import { geocodeAddress } from '../utils/geocode';
 
-const ChefDashboard = () => {
+const ChefDashboard = ({ onLogout, onUserUpdate }) => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(true);
@@ -42,6 +44,10 @@ const ChefDashboard = () => {
   const [newOrderAlert, setNewOrderAlert] = useState(false);
   const [riderAlert, setRiderAlert] = useState(null);
   const socketRef = useRef(null);
+
+  // ─── Rider live-tracking state ──────────────────────────────────────────────
+  const [riderLiveLocation, setRiderLiveLocation] = useState(null); // { lat, lng, orderId }
+  const [chefOwnCoords,     setChefOwnCoords]     = useState(null); // geocoded kitchen
   
   const [kitchenActive, setKitchenActive] = useState(currentUser.isActive !== false);
   const [subscribersFilter, setSubscribersFilter] = useState('active');
@@ -124,6 +130,7 @@ const ChefDashboard = () => {
         localStorage.setItem('user', JSON.stringify(updatedUser));
         setCurrentUser(updatedUser);
         toast.success(`Kitchen status updated: ${nextStatus ? 'Online' : 'Offline'}`);
+        if (onUserUpdate) onUserUpdate(updatedUser);
       }
     } catch (err) {
       toast.error("Failed to toggle kitchen status: " + (err.response?.data?.message || err.message));
@@ -173,6 +180,8 @@ const ChefDashboard = () => {
         const updated = { ...currentUser, ...userData };
         localStorage.setItem('user', JSON.stringify(updated));
         setCurrentUser(updated);
+        // Propagate updated user to parent so Navbar reflects changes immediately
+        if (onUserUpdate) onUserUpdate(updated);
       }
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
@@ -261,33 +270,73 @@ const ChefDashboard = () => {
     socket.emit('join_chef_room', chefId);
 
     socket.on('connect', () => {
-      console.log('Chef socket connected:', socket.id);
       socket.emit('join_chef_room', chefId);
     });
 
     socket.on('new_order_notification', ({ status, message }) => {
-      console.log('Chef notification:', status);
       // Always refresh orders
       fetchAll();
-      // Show appropriate alerts
+      // Show appropriate alerts based on status
       if (!status || status === 'pending') {
         setNewOrderAlert(true); // New incoming order
         addNotification('🍽️ New Order Received', message || 'A new customer has placed an order.');
-      } else if (status === 'accepted') {
-        setRiderAlert('🚴 A rider has accepted your order and is heading to your kitchen!');
+      } else if (status === 'rider_accepted') {
+        // FIX #2: Chef ONLY notified after rider accepts (correct flow)
+        setRiderAlert('🚴 A rider has accepted your order and is heading to your kitchen! Head to your kitchen.');
+        setTimeout(() => setRiderAlert(null), 10000);
+        addNotification('🚴 Rider Accepted Order', message || 'A rider is heading to your kitchen.');
+      } else if (status === 'rider_rejected') {
+        setRiderAlert('⚠️ The rider rejected your order. We are finding another rider...');
         setTimeout(() => setRiderAlert(null), 8000);
-        addNotification('🚴 Rider Accepted Order', 'A rider is heading to your kitchen.');
-      } else if (status === 'picked_up') {
+        addNotification('⚠️ Rider Rejected', 'We are re-assigning another rider for your order.');
+      } else if (status === 'picked-up' || status === 'picked_up') {
         setRiderAlert('📦 Rider has picked up the food and is on the way to the customer!');
         setTimeout(() => setRiderAlert(null), 8000);
         addNotification('📦 Order Picked Up', 'Rider has picked up the food.');
+      } else if (status === 'delivered') {
+        addNotification('✅ Order Delivered', message || 'Your order was delivered successfully. Payment added to wallet.');
+        setRiderAlert('✅ Order successfully delivered to the customer! Payment has been added to your wallet.');
+        setTimeout(() => setRiderAlert(null), 10000);
+        fetchAll(); // refresh wallet balance
       }
+    });
+
+    // ── Admin approval / rejection in-app notification ──
+    socket.on('account_status_update', ({ status, message }) => {
+      if (status === 'approved') {
+        addNotification('✅ Account Approved!', message || 'Your chef account has been approved by admin.');
+        toast.success(message || 'Your chef account is now approved! You can go online.');
+      } else if (status === 'rejected') {
+        addNotification('❌ Application Rejected', message || 'Your chef application was rejected. Please re-upload documents.');
+        toast.error(message || 'Your chef application was rejected. Check your dashboard.');
+      }
+      fetchAll(); // refresh isVerified state in UI
+    });
+
+    // Rider live location — forwarded from socket.js rider_location_update
+    socket.on('rider_location_update', ({ lat, lng, orderId }) => {
+      setRiderLiveLocation({ lat, lng, orderId });
     });
 
     return () => {
       socket.disconnect();
     };
   }, [chefId, fetchAll, addNotification]);
+
+  // ─── Resolve chef's kitchen coordinates (use stored GPS first, geocode as fallback) ──
+  useEffect(() => {
+    if (currentUser?.location?.lat && currentUser?.location?.lng) {
+      // Chef has set their kitchen GPS — use it directly, no network call
+      setChefOwnCoords(currentUser.location);
+    } else {
+      // Fallback: geocode text address
+      const addr = currentUser?.address || currentUser?.city;
+      if (!addr) return;
+      geocodeAddress(addr).then(coords => {
+        if (coords) setChefOwnCoords(coords);
+      });
+    }
+  }, [currentUser?._id]);
 
   const updateStatus = async (orderId, status, reason = '') => {
     try {
@@ -315,7 +364,12 @@ const ChefDashboard = () => {
     catch (e) { toast.error('Delete failed'); }
   };
 
-  const handleLogout = () => { localStorage.clear(); navigate('/login'); };
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    if (onLogout) onLogout();
+    navigate('/login');
+  };
 
   const lockedEarnings = subscriptions
     .filter(s => s.paymentStatus === 'approved' && s.payoutStatus !== 'paid')
@@ -469,6 +523,40 @@ const ChefDashboard = () => {
         {/* ORDERS */}
         {activeTab === 'orders' && (
           <div className="space-y-4">
+            {/* ── Rider Live Tracker (shown when a rider is en-route) ──────────── */}
+            {riderLiveLocation && (() => {
+              const trackedOrder = orders.find(o => o._id === riderLiveLocation.orderId);
+              const isEnRoute = trackedOrder && ['ready-for-pickup','picked-up','out-for-delivery'].includes(trackedOrder.status);
+              if (!isEnRoute) return null;
+              return (
+                <div className="bg-white p-6 rounded-[30px] border-l-4 border-[#FBBF24] shadow-sm space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-[9px] font-black uppercase text-[#FBBF24] tracking-widest">Live Rider Tracker</p>
+                      <h4 className="font-black text-[#1A2316] text-base uppercase italic">
+                        🏍️ {trackedOrder.rider?.name || 'Rider'} is on the move
+                      </h4>
+                    </div>
+                    <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-xl">
+                      <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"/>
+                      <span className="text-[9px] font-black text-emerald-600 uppercase">Live</span>
+                    </div>
+                  </div>
+                  <LiveTrackingMap
+                    riderLocation={riderLiveLocation}
+                    chefLocation={chefOwnCoords}
+                    customerLocation={null}
+                    height="280px"
+                    followRider={true}
+                    showPolyline={true}
+                  />
+                  <p className="text-[9px] text-gray-400 font-bold uppercase text-center">
+                    📡 Rider’s GPS is being shared in real-time via HomePlates Fleet
+                  </p>
+                </div>
+              );
+            })()}
+
             {loading ? <div className="text-center py-20 text-gray-400 font-black uppercase animate-pulse">Loading...</div>
               : orders.length === 0 ? <div className="bg-white p-16 rounded-[40px] flex flex-col items-center text-gray-300"><Clock size={40} className="mb-4 opacity-20" /><p className="font-black text-[10px] uppercase">No Orders Yet</p></div>
               : orders.map(o => (
@@ -934,7 +1022,15 @@ const ChefDashboard = () => {
 
         {/* PROFILE */}
         {activeTab === 'profile' && (
-          <ProfileTab user={currentUser} chefId={chefId} token={token} onUpdateUser={setCurrentUser} />
+          <ProfileTab 
+            user={currentUser} 
+            chefId={chefId} 
+            token={token} 
+            onUpdateUser={(updated) => {
+              setCurrentUser(updated);
+              if (onUserUpdate) onUserUpdate(updated);
+            }} 
+          />
         )}
         {/* WITHDRAW MODAL */}
         {showWithdrawModal && (
@@ -1260,7 +1356,7 @@ const RecipesTab = ({ chefId, token }) => {
 };
 
 const ProfileTab = ({ user, chefId, token, onUpdateUser }) => {
-  const authH = { headers: { Authorization: `Bearer ${token}` } };
+  // authH not needed here — save() uses token prop directly
   const [form, setForm] = useState({
     name: user.name||'',
     kitchenName: user.kitchenName||'',
@@ -1277,8 +1373,50 @@ const ProfileTab = ({ user, chefId, token, onUpdateUser }) => {
     monthlyDinnerPrice: user.monthlyDinnerPrice || ''
   });
 
+  // ── Kitchen GPS location ──────────────────────────────────────────────────
+  const [kitchenLoc, setKitchenLoc] = useState(
+    user.location?.lat ? user.location : null
+  );
+  const [settingLoc, setSettingLoc] = useState(false);
+
+  const handleSetKitchenLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error('Geolocation not supported by your browser.');
+      return;
+    }
+    setSettingLoc(true);
+    navigator.geolocation.getCurrentPosition(
+      async ({ coords }) => {
+        const { latitude: lat, longitude: lng } = coords;
+        try {
+          const formData = new FormData();
+          formData.append('locationLat', lat);
+          formData.append('locationLng', lng);
+          // Let axios auto-set Content-Type with correct FormData boundary
+          const res = await API.put(`/api/users/${chefId}`, formData, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          setKitchenLoc({ lat, lng });
+          if (onUpdateUser) onUpdateUser(res.data.user || { ...user, location: { lat, lng } });
+          toast.success('📍 Kitchen location saved! Riders will see it on the map.');
+        } catch (e) {
+          toast.error('Failed to save location: ' + (e.response?.data?.message || e.message));
+        } finally {
+          setSettingLoc(false);
+        }
+      },
+      (err) => {
+        console.error('GPS error:', err);
+        setSettingLoc(false);
+        toast.error('Could not detect location. Please allow GPS access.');
+      },
+      { enableHighAccuracy: true, timeout: 12000 }
+    );
+  };
+
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(user.img || '');
+
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
@@ -1395,7 +1533,42 @@ const ProfileTab = ({ user, chefId, token, onUpdateUser }) => {
         </div>
       </div>
 
+
+      {/* ── Kitchen GPS Location ─────────────────────────────────────── */}
+      <div className="mt-8 p-6 bg-gray-50 rounded-3xl border border-gray-100">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div>
+            <h4 className="font-black text-[#1A2316] text-xs uppercase tracking-widest mb-1">📍 Kitchen GPS Location</h4>
+            {kitchenLoc ? (
+              <p className="text-[10px] text-emerald-600 font-bold">
+                ✅ Saved: {kitchenLoc.lat.toFixed(5)}, {kitchenLoc.lng.toFixed(5)}
+              </p>
+            ) : (
+              <p className="text-[10px] text-orange-500 font-bold">
+                ⚠️ Not set — riders cannot see your kitchen pin on the map
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={handleSetKitchenLocation}
+            disabled={settingLoc}
+            className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 ${
+              kitchenLoc
+                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
+                : 'bg-[#1A2316] text-[#FBBF24] hover:bg-[#253120]'
+            }`}
+          >
+            {settingLoc ? 'Detecting...' : kitchenLoc ? '🔄 Update Location' : '📍 Set Kitchen Location'}
+          </button>
+        </div>
+        <p className="text-[9px] text-gray-400 font-bold mt-3">
+          Click once to save your current GPS as your kitchen address. Riders and customers will see this exact pin on the map — no geocoding needed.
+        </p>
+      </div>
+
       <button onClick={save} className="mt-8 w-full bg-[#1A2316] text-[#FBBF24] py-5 rounded-[25px] font-black uppercase tracking-widest shadow-xl active:scale-95 transition-all">Save Profile</button>
+
     </div>
   );
 };

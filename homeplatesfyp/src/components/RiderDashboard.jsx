@@ -8,8 +8,11 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import API from '../api';
+import { toast } from '../utils/toast';
+import LiveTrackingMap from './LiveTrackingMap';
+import { geocodeAddress } from '../utils/geocode';
 
-const RiderDashboard = ({ user: propUser, onLogout }) => {
+const RiderDashboard = ({ user: propUser, onLogout, onUserUpdate }) => {
   const navigate = useNavigate();
   const currentUser = propUser || JSON.parse(localStorage.getItem('user') || '{}');
   const token = localStorage.getItem('token');
@@ -31,6 +34,12 @@ const RiderDashboard = ({ user: propUser, onLogout }) => {
   const [acceptingOrder, setAcceptingOrder] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
 
+  // ─── Live tracking state ────────────────────────────────────────────────────
+  const [riderCoords,    setRiderCoords]    = useState(null); // own GPS position
+  const [chefCoords,     setChefCoords]     = useState(null); // geocoded pickup
+  const [customerCoords, setCustomerCoords] = useState(null); // geocoded dropoff
+  const [geoError,       setGeoError]       = useState('');
+
   const isOnlineRef = useRef(isOnline);
   useEffect(() => {
     isOnlineRef.current = isOnline;
@@ -41,7 +50,8 @@ const RiderDashboard = ({ user: propUser, onLogout }) => {
     phone: currentUser.phone || '',
     vehicle: currentUser.vehicle || '',
     zone: currentUser.zone || '',
-    email: currentUser.email || ''
+    email: currentUser.email || '',
+    city: currentUser.city || 'Lahore'
   });
   const [editProfile, setEditProfile] = useState({ ...profile });
   const [savingProfile, setSavingProfile] = useState(false);
@@ -55,7 +65,7 @@ const RiderDashboard = ({ user: propUser, onLogout }) => {
     setLoading(true);
     try {
       const [availRes, activeRes, walletRes] = await Promise.allSettled([
-        API.get('/api/orders/rider/available'),
+        API.get('/api/orders/rider/available', authH),
         API.get(`/api/orders/rider/active/${riderId}`),
         API.get(`/api/wallet/${riderId}`, authH),
       ]);
@@ -83,14 +93,12 @@ const RiderDashboard = ({ user: propUser, onLogout }) => {
     socket.emit('join_rider_room', riderId);
 
     socket.on('connect', () => {
-      console.log('Rider socket connected:', socket.id);
       socket.emit('join_rider_room', riderId);
     });
 
     // 🚴 New order available for delivery — show full alert modal
     socket.on('new_delivery_available', ({ order, message }) => {
       if (!isOnlineRef.current) return;
-      console.log('New delivery available:', order);
       addNotification('🍽️ New Delivery Available!', message || 'A new order is ready for pickup!');
       setNewOrderAlert(order);
       // Refresh available orders list
@@ -113,6 +121,13 @@ const RiderDashboard = ({ user: propUser, onLogout }) => {
       }
     });
 
+    // FIX #6: Chef cancelled the order — notify the user (rider also sees this)
+    socket.on('order_cancelled_by_chef', ({ orderId, message }) => {
+      addNotification('⚠️ Order Rejected by Chef', message || 'The chef rejected this order.');
+      setActiveOrder(prev => prev?._id === orderId ? null : prev);
+      fetchData();
+    });
+
     // Delivery complete confirmation
     socket.on('delivery_complete', ({ earning, message }) => {
       addNotification('💰 Delivery Complete!', message || `PKR ${earning} added to your wallet.`);
@@ -122,7 +137,7 @@ const RiderDashboard = ({ user: propUser, onLogout }) => {
     return () => {
       socket.disconnect();
     };
-  }, [riderId, fetchData]);
+  }, [riderId, fetchData, currentUser?.city]);
 
   // Sync online duty status with socket
   useEffect(() => {
@@ -136,14 +151,73 @@ const RiderDashboard = ({ user: propUser, onLogout }) => {
     }
   }, [isOnline, riderId]);
 
+  // ─── Geolocation: broadcast live position while order is in transit ──────────
+  useEffect(() => {
+    const transitStatuses = ['ready-for-pickup', 'picked-up', 'out-for-delivery'];
+    if (!activeOrder || !transitStatuses.includes(activeOrder.status)) return;
+    if (!navigator.geolocation) {
+      setGeoError('Geolocation is not supported by your browser.');
+      return;
+    }
+    setGeoError('');
+    const watchId = navigator.geolocation.watchPosition(
+      ({ coords: { latitude: lat, longitude: lng } }) => {
+        setRiderCoords({ lat, lng });
+        socketRef.current?.emit('update_location', {
+          orderId: activeOrder._id,
+          lat,
+          lng,
+          chefId: activeOrder.chef?._id,
+        });
+      },
+      (err) => {
+        console.error('Geolocation error:', err);
+        setGeoError('Location access denied — enable GPS in browser settings to broadcast your position.');
+      },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+    );
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, [activeOrder?.status, activeOrder?._id]);
+
+  // ─── Resolve chef/customer coords from stored order fields (instant, no geocoding) ──
+  useEffect(() => {
+    if (!activeOrder) {
+      setChefCoords(null);
+      setCustomerCoords(null);
+      return;
+    }
+
+    // Chef pickup pin — use stored pickupLocation first (set at order-placement from chef.location)
+    if (activeOrder.pickupLocation?.lat && activeOrder.pickupLocation?.lng) {
+      setChefCoords(activeOrder.pickupLocation);
+    } else if (activeOrder.chef?.location?.lat && activeOrder.chef?.location?.lng) {
+      setChefCoords(activeOrder.chef.location);
+    } else {
+      // Fallback: geocode only if no stored coords
+      const chefAddr = activeOrder.chef?.address || activeOrder.chef?.city;
+      if (chefAddr) {
+        geocodeAddress(chefAddr).then(c => { if (c) setChefCoords(c); });
+      }
+    }
+
+    // Customer drop-off pin — use stored deliveryLocation first
+    if (activeOrder.deliveryLocation?.lat && activeOrder.deliveryLocation?.lng) {
+      setCustomerCoords(activeOrder.deliveryLocation);
+    } else if (activeOrder.deliveryAddress) {
+      // Fallback: geocode from text address
+      geocodeAddress(activeOrder.deliveryAddress).then(c => { if (c) setCustomerCoords(c); });
+    }
+  }, [activeOrder?._id]);
+
+
   // ─── ORDER ACTIONS ──────────────────────────────────────────────────────────
   const acceptOrder = async (order) => {
     if (!isOnline) {
-      alert('You are currently Offline. Please go Online to accept orders.');
+      toast.error('You are currently Offline. Please go Online to accept orders.');
       return;
     }
     if (activeOrder) {
-      alert('You already have an active delivery. Complete it first.');
+      toast.error('You already have an active delivery. Complete it first.');
       return;
     }
     setAcceptingOrder(true);
@@ -154,9 +228,20 @@ const RiderDashboard = ({ user: propUser, onLogout }) => {
       await fetchData();
       setActiveTab('lifecycle');
     } catch (e) {
-      alert('Error accepting order: ' + (e.response?.data?.message || e.message));
+      toast.error('Error accepting order: ' + (e.response?.data?.message || e.message));
     } finally {
       setAcceptingOrder(false);
+    }
+  };
+
+  const ignoreOrder = async (order) => {
+    try {
+      await API.patch(`/api/orders/${order._id}/ignore`, {}, authH);
+      addNotification('🚫 Request Ignored', 'You ignored the delivery request.');
+      setNewOrderAlert(null);
+      await fetchData();
+    } catch (e) {
+      toast.error('Error ignoring order: ' + (e.response?.data?.message || e.message));
     }
   };
 
@@ -192,7 +277,25 @@ const RiderDashboard = ({ user: propUser, onLogout }) => {
         addNotification('📍 Status Updated', `Order is now: ${STATUS_LABELS[nextStatus]}`);
       }
     } catch (e) {
-      alert('Error updating status: ' + (e.response?.data?.message || e.message));
+      toast.error('Error updating status: ' + (e.response?.data?.message || e.message));
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
+
+  // FIX #5: Rider can reject / unassign themselves from an order
+  const rejectOrder = async () => {
+    if (!activeOrder) return;
+    if (!window.confirm('Are you sure you want to reject this order? It will be reassigned to another rider.')) return;
+    setUpdatingStatus(true);
+    try {
+      await API.patch(`/api/orders/${activeOrder._id}/reject`, { riderId });
+      addNotification('❌ Order Rejected', 'You have rejected the order. It will be reassigned.');
+      setActiveOrder(null);
+      await fetchData();
+      setActiveTab('available');
+    } catch (e) {
+      toast.error('Error rejecting order: ' + (e.response?.data?.message || e.message));
     } finally {
       setUpdatingStatus(false);
     }
@@ -215,13 +318,16 @@ const RiderDashboard = ({ user: propUser, onLogout }) => {
         phone: editProfile.phone,
         vehicle: editProfile.vehicle,
         zone: editProfile.zone,
+        city: editProfile.city,
       }, authH);
       const updated = res.data.user;
-      setProfile({ name: updated.name || '', phone: updated.phone || '', vehicle: updated.vehicle || '', zone: updated.zone || '', email: updated.email || '' });
-      localStorage.setItem('user', JSON.stringify({ ...currentUser, ...updated }));
-      alert('Profile updated!');
+      const updatedUser = { ...currentUser, ...updated };
+      setProfile({ name: updated.name || '', phone: updated.phone || '', vehicle: updated.vehicle || '', zone: updated.zone || '', email: updated.email || '', city: updated.city || 'Lahore' });
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      toast.success('Profile updated successfully!');
+      if (onUserUpdate) onUserUpdate(updatedUser);
     } catch (e) {
-      alert('Error: ' + (e.response?.data?.message || e.message));
+      toast.error('Error: ' + (e.response?.data?.message || e.message));
     } finally {
       setSavingProfile(false);
     }
@@ -371,10 +477,10 @@ const RiderDashboard = ({ user: propUser, onLogout }) => {
                   {acceptingOrder ? 'Accepting...' : activeOrder ? 'Finish Active Order First' : '✓ Accept & Deliver'}
                 </button>
                 <button
-                  onClick={() => setNewOrderAlert(null)}
+                  onClick={() => ignoreOrder(newOrderAlert)}
                   className="px-6 bg-white/10 text-gray-400 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-white/20 transition-all"
                 >
-                  Skip
+                  Ignore
                 </button>
               </div>
 
@@ -658,13 +764,21 @@ const RiderDashboard = ({ user: propUser, onLogout }) => {
                     <p className="text-[9px] font-black uppercase text-gray-400">Your Delivery Fee</p>
                     <p className="text-2xl font-black text-emerald-600">PKR {order.deliveryCharges || 150}</p>
                   </div>
-                  <button
-                    onClick={() => acceptOrder(order)}
-                    disabled={!!activeOrder || acceptingOrder}
-                    className="bg-[#1A2316] text-[#FBBF24] px-8 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-[#253220] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    {activeOrder ? 'Finish Active Order First' : 'Accept & Deliver'}
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => ignoreOrder(order)}
+                      className="px-5 py-4 bg-red-50 text-red-600 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-red-100 transition-all"
+                    >
+                      Ignore
+                    </button>
+                    <button
+                      onClick={() => acceptOrder(order)}
+                      disabled={!!activeOrder || acceptingOrder}
+                      className="bg-[#1A2316] text-[#FBBF24] px-8 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-[#253220] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {activeOrder ? 'Finish Active Order First' : 'Accept & Deliver'}
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -738,6 +852,63 @@ const RiderDashboard = ({ user: propUser, onLogout }) => {
                   </div>
                 </div>
 
+                {/* ── Live Route Map ─────────────────────────────────────────── */}
+                {(chefCoords || customerCoords) && (
+                  <div className="bg-white p-6 rounded-[40px] border border-gray-100 shadow-sm">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h4 className="font-black uppercase text-xs text-gray-400 tracking-widest mb-1">📍 Delivery Route Map</h4>
+                        {riderCoords ? (
+                          <p className="text-[10px] text-emerald-600 font-black uppercase flex items-center gap-1.5">
+                            <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse inline-block"/>
+                            Broadcasting live location to customer
+                          </p>
+                        ) : (
+                          <p className="text-[10px] text-orange-500 font-black uppercase">⏳ Acquiring GPS signal...</p>
+                        )}
+                      </div>
+                      {geoError && (
+                        <span className="text-red-500 text-[9px] font-black uppercase bg-red-50 px-3 py-1.5 rounded-xl border border-red-100">GPS Off</span>
+                      )}
+                    </div>
+
+                    <LiveTrackingMap
+                      riderLocation={riderCoords}
+                      chefLocation={chefCoords}
+                      customerLocation={customerCoords}
+                      phase={['picked-up', 'out-for-delivery'].includes(activeOrder?.status) ? 'delivery' : 'pickup'}
+                      height="340px"
+                      followRider={false}
+                    />
+
+                    {geoError && (
+                      <p className="text-[9px] text-red-500 font-bold text-center mt-3 bg-red-50 py-2 px-4 rounded-xl">{geoError}</p>
+                    )}
+
+                    {/* Quick info badges */}
+                    <div className="flex gap-3 mt-4 flex-wrap">
+                      {chefCoords && (
+                        <div className="flex items-center gap-1.5 bg-[#FEF9ED] border border-[#FBBF24]/20 px-3 py-2 rounded-xl">
+                          <span className="w-2.5 h-2.5 bg-[#FBBF24] rounded-full"/>
+                          <span className="text-[9px] font-black text-[#1A2316] uppercase tracking-wider">Pickup — Chef Kitchen</span>
+                        </div>
+                      )}
+                      {customerCoords && (
+                        <div className="flex items-center gap-1.5 bg-green-50 border border-green-200 px-3 py-2 rounded-xl">
+                          <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full"/>
+                          <span className="text-[9px] font-black text-green-700 uppercase tracking-wider">Dropoff — Customer</span>
+                        </div>
+                      )}
+                      {riderCoords && (
+                        <div className="flex items-center gap-1.5 bg-[#1A2316] px-3 py-2 rounded-xl">
+                          <span className="w-2.5 h-2.5 bg-white rounded-full animate-pulse"/>
+                          <span className="text-[9px] font-black text-[#FBBF24] uppercase tracking-wider">You (Live)</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* Status Stepper */}
                 <div className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm">
                   <div className="text-center pb-5 border-b border-gray-50 mb-6">
@@ -789,6 +960,70 @@ const RiderDashboard = ({ user: propUser, onLogout }) => {
                       );
                     })}
                   </div>
+
+                  {/* FIX #5: Reject Order button — only available at ready-for-pickup stage */}
+                  {activeOrder.status === 'ready-for-pickup' && (
+                    <div className="mt-6 pt-6 border-t border-gray-50">
+                      <button
+                        onClick={rejectOrder}
+                        disabled={updatingStatus}
+                        className="w-full bg-red-50 text-red-600 border-2 border-red-100 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-red-100 transition-all disabled:opacity-50"
+                      >
+                        {updatingStatus ? 'Processing...' : '❌ Reject Order — Reassign to Another Rider'}
+                      </button>
+                      <p className="text-[9px] text-gray-400 font-bold text-center mt-2">Only use if you cannot fulfill this delivery.</p>
+                    </div>
+                  )}
+
+                  {/* Cancel Delivery & Delivery Failed buttons — available at picked-up and out-for-delivery stages */}
+                  {(activeOrder.status === 'picked-up' || activeOrder.status === 'out-for-delivery') && (
+                    <div className="mt-6 pt-6 border-t border-gray-50 flex gap-3">
+                      <button
+                        onClick={async () => {
+                          const reason = prompt('Enter cancellation reason:') || 'Cancelled by rider';
+                          if (reason) {
+                            setUpdatingStatus(true);
+                            try {
+                              await API.patch(`/api/orders/${activeOrder._id}/status`, { status: 'cancelled', cancellationReason: reason, riderId }, authH);
+                              addNotification('❌ Delivery Cancelled', 'You cancelled the delivery.');
+                              setActiveOrder(null);
+                              await fetchData();
+                            } catch (e) {
+                              toast.error('Error cancelling: ' + (e.response?.data?.message || e.message));
+                            } finally {
+                              setUpdatingStatus(false);
+                            }
+                          }
+                        }}
+                        disabled={updatingStatus}
+                        className="flex-1 bg-red-50 text-red-600 border-2 border-red-100 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-red-100 transition-all disabled:opacity-50"
+                      >
+                        Cancel Delivery
+                      </button>
+                      <button
+                        onClick={async () => {
+                          const reason = prompt('Enter reason for delivery failure:') || 'Failed to deliver';
+                          if (reason) {
+                            setUpdatingStatus(true);
+                            try {
+                              await API.patch(`/api/orders/${activeOrder._id}/status`, { status: 'delivery-failed', cancellationReason: reason, riderId }, authH);
+                              addNotification('⚠️ Delivery Failed', 'Order marked as delivery failed.');
+                              setActiveOrder(null);
+                              await fetchData();
+                            } catch (e) {
+                              toast.error('Error updating status: ' + (e.response?.data?.message || e.message));
+                            } finally {
+                              setUpdatingStatus(false);
+                            }
+                          }
+                        }}
+                        disabled={updatingStatus}
+                        className="flex-1 bg-orange-50 text-orange-600 border-2 border-orange-100 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-orange-100 transition-all disabled:opacity-50"
+                      >
+                        Delivery Failed
+                      </button>
+                    </div>
+                  )}
                 </div>
               </>
             ) : (
@@ -887,6 +1122,18 @@ const RiderDashboard = ({ user: propUser, onLogout }) => {
                   />
                 </div>
               ))}
+              <div className="space-y-2">
+                <label className="text-[9px] font-black uppercase text-gray-400 ml-5 block">Assigned City</label>
+                <select
+                  value={editProfile.city || 'Lahore'}
+                  onChange={(e) => setEditProfile({ ...editProfile, city: e.target.value })}
+                  className="w-full bg-gray-50 p-5 rounded-3xl outline-none font-black text-sm border border-transparent focus:border-[#FBBF24] transition-all"
+                >
+                  <option value="Lahore">Lahore</option>
+                  <option value="Karachi">Karachi</option>
+                  <option value="Islamabad">Islamabad</option>
+                </select>
+              </div>
               <div className="md:col-span-2">
                 <button
                   type="submit"

@@ -12,7 +12,7 @@ const getImageUrl = (url) => {
   return `http://localhost:5000${url}`;
 };
 
-const ExploreFood = () => {
+const ExploreFood = ({ currentUser }) => {
   const [query, setQuery] = useState("");
   const [activeTab, setActiveTab] = useState("All");
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -23,8 +23,16 @@ const ExploreFood = () => {
 
   // Data Fetching from Backend
   useEffect(() => {
+    const userCity = currentUser?.city || '';
+    const menuUrl = userCity 
+      ? `http://localhost:5000/api/all-dishes?city=${encodeURIComponent(userCity)}` 
+      : 'http://localhost:5000/api/all-dishes';
+    const chefsUrl = userCity 
+      ? `http://localhost:5000/api/chefs?city=${encodeURIComponent(userCity)}` 
+      : 'http://localhost:5000/api/chefs';
+
     // Fetch Menu
-    fetch('http://localhost:5000/api/all-dishes')
+    fetch(menuUrl)
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) {
@@ -40,7 +48,7 @@ const ExploreFood = () => {
       });
 
     // Fetch Chefs
-    fetch('http://localhost:5000/api/chefs')
+    fetch(chefsUrl)
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) {
@@ -54,7 +62,7 @@ const ExploreFood = () => {
         console.error("Error fetching chefs:", err);
         setChefs([]);
       });
-  }, []);
+  }, [currentUser]);
 
 
   const nearDishes = useMemo(() => foodItems.filter(item => item.distance < 1.5), [foodItems]);

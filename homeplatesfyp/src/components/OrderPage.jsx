@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Minus, Plus, ChevronLeft, ShoppingBag, MessageSquare, ShieldCheck, Timer } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { toast } from '../utils/toast';
 
 const OrderPage = ({ onAddToCart }) => {
   const { dishId } = useParams();
@@ -68,7 +69,7 @@ const OrderPage = ({ onAddToCart }) => {
       instructions: note, 
       portion 
     });
-    alert(`🎉 Added ${qty}x ${dish.name} (${portion}) to your cart!`);
+    toast.success(`Added ${qty}x ${dish.name} (${portion}) to your cart!`);
     navigate('/cart');
   };
 

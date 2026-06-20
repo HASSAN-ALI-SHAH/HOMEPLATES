@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Star, Send, MessageSquare, Quote, User, CheckCircle, Loader2 } from 'lucide-react';
+import { toast } from '../utils/toast';
 
 const getImageUrl = (url) => {
   if (!url) return null;
@@ -37,11 +38,14 @@ const PlatformReviewPage = ({ currentUser }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (rating === 0 || !comment.trim()) return alert("Please add rating and comment!");
+    if (rating === 0 || !comment.trim()) {
+      toast.error("Please add a rating and write a comment!");
+      return;
+    }
 
     const token = localStorage.getItem('token');
     if (!token) {
-      alert("Please login to submit a platform review.");
+      toast.error("Please login to submit a platform review.");
       return;
     }
 
@@ -60,16 +64,17 @@ const PlatformReviewPage = ({ currentUser }) => {
       });
 
       if (res.ok) {
+        toast.success("Review submitted! Thank you for your feedback.");
         setComment("");
         setRating(0);
         await fetchReviews();
       } else {
         const err = await res.json();
-        alert(err.message || "Failed to submit review");
+        toast.error(err.message || "Failed to submit review");
       }
     } catch (err) {
       console.error(err);
-      alert("Error submitting review. Please try again.");
+      toast.error("Error submitting review. Please try again.");
     } finally {
       setSubmitting(false);
     }

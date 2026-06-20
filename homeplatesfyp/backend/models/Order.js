@@ -18,7 +18,7 @@ const orderSchema = new mongoose.Schema({
     paymentMethod: { type: String, enum: ['cash', 'wallet'], default: 'cash' },
     status: { 
         type: String, 
-        enum: ['pending', 'accepted', 'preparing', 'ready-for-pickup', 'picked-up', 'out-for-delivery', 'delivered', 'cancelled'], 
+        enum: ['pending', 'accepted', 'preparing', 'ready-for-pickup', 'picked-up', 'out-for-delivery', 'delivered', 'cancelled', 'delivery-failed'], 
         default: 'pending' 
     },
     
@@ -26,11 +26,28 @@ const orderSchema = new mongoose.Schema({
         lat: { type: Number },
         lng: { type: Number }
     },
+
+    // Stored at order-placement time — used directly by map components, no geocoding
+    pickupLocation: {       // chef's kitchen GPS (copied from chef.location)
+        lat: { type: Number },
+        lng: { type: Number }
+    },
+    deliveryLocation: {     // customer's GPS (sent by browser at checkout)
+        lat: { type: Number },
+        lng: { type: Number }
+    },
     
     isSubscriptionOrder: { type: Boolean, default: false },
     subscriptionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Subscription' },
     cancellationReason: { type: String },
-    orderDate: { type: Date, default: Date.now }
+    orderDate: { type: Date, default: Date.now },
+
+    ignoredBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    statusHistory: [{
+        status: { type: String, required: true },
+        updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        timestamp: { type: Date, default: Date.now }
+    }]
 }, { timestamps: true });
 
 module.exports = mongoose.models.Order || mongoose.model('Order', orderSchema);

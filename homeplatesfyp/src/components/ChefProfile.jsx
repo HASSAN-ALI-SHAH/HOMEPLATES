@@ -422,6 +422,32 @@ const ChefProfile = ({ handleAddToCart }) => {
           </div>
         </div>
 
+        {/* FIX #7: Offline Banner — shown when chef is NOT active */}
+        {chef && !chef.isActive && (
+          <div className="mt-6 bg-red-50 border-2 border-red-200 rounded-[30px] p-6 flex items-center gap-4">
+            <div className="bg-red-500 p-3 rounded-2xl flex-shrink-0">
+              <span className="text-white text-lg">🔴</span>
+            </div>
+            <div>
+              <p className="font-black uppercase text-red-700 text-sm tracking-wide">Kitchen Currently Offline</p>
+              <p className="text-red-500 text-xs font-bold mt-0.5">This chef is not accepting orders right now. You can browse their menu but cannot place an order.</p>
+            </div>
+          </div>
+        )}
+
+        {/* FIX #1: Unverified chef banner */}
+        {chef && !chef.isVerified && (
+          <div className="mt-4 bg-yellow-50 border-2 border-yellow-200 rounded-[30px] p-6 flex items-center gap-4">
+            <div className="bg-yellow-400 p-3 rounded-2xl flex-shrink-0">
+              <span className="text-white text-lg">⚠️</span>
+            </div>
+            <div>
+              <p className="font-black uppercase text-yellow-700 text-sm tracking-wide">Pending Verification</p>
+              <p className="text-yellow-600 text-xs font-bold mt-0.5">This chef is awaiting admin verification. Orders are temporarily unavailable.</p>
+            </div>
+          </div>
+        )}
+
         {/* Navigation Tabs */}
         <div className="mt-12 flex gap-10 border-b border-gray-100 overflow-x-auto no-scrollbar">
           {['Menu', 'About', 'Recipes', 'Subscription', 'Reviews'].map(tab => (
@@ -495,10 +521,14 @@ const ChefProfile = ({ handleAddToCart }) => {
                           <span className="font-black text-2xl text-[#1A2316]">Rs. {item.price}</span>
                           <button
                             onClick={() => {
+                              if (!chef?.isActive || !chef?.isVerified) {
+                                toast.error(chef?.isActive === false ? 'This chef is currently offline.' : 'Chef not verified yet.');
+                                return;
+                              }
                               setCustomizingItem(item);
                               setSelectedPortion('Full');
                             }}
-                            disabled={!item.isAvailable}
+                            disabled={!item.isAvailable || !chef?.isActive || !chef?.isVerified}
                             className="bg-[#1A2316] text-white p-4 rounded-2xl hover:bg-[#FBBF24] hover:text-[#1A2316] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                           >
                             <ShoppingCart size={18} />

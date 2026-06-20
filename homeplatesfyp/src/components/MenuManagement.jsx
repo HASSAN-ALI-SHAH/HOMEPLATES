@@ -61,7 +61,6 @@
              onClick={(e) => {
                e.preventDefault();
                e.stopPropagation();
-               console.log("Edit clicked for:", dish.id); // Check console if it fires
                navigate(`/chef/edit-dish/${dish.id}`);
              }}
              className="absolute top-10 right-10 z-[60] bg-white text-[#1A2316] px-6 py-4 rounded-2xl shadow-2xl hover:bg-[#FBBF24] transition-all duration-300 flex items-center gap-2 font-black text-[10px] uppercase tracking-widest opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100"

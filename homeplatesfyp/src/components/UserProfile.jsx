@@ -7,7 +7,7 @@ import {
 import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from '../utils/toast';
 
-const UserProfile = ({ user, onLogout }) => {
+const UserProfile = ({ user, onLogout, onUserUpdate }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [activeTab, setActiveTab] = useState(() => {
@@ -99,9 +99,11 @@ const UserProfile = ({ user, onLogout }) => {
       });
       if (res.ok) {
         const data = await res.json();
-        localStorage.setItem('user', JSON.stringify({ ...user, ...data.user }));
+        const updatedUser = { ...user, ...data.user };
+        localStorage.setItem('user', JSON.stringify(updatedUser));
         setIsEditing(false);
         toast.success('Profile updated successfully!');
+        if (onUserUpdate) onUserUpdate(updatedUser);
       } else {
         const err = await res.json();
         toast.error('Update failed: ' + (err.message || 'Unknown error'));
@@ -716,10 +718,32 @@ const UserProfile = ({ user, onLogout }) => {
                       disabled={sendingHelp || !helpMessage.trim()}
                       onClick={async () => {
                         setSendingHelp(true);
-                        await new Promise(r => setTimeout(r, 800));
-                        toast.success("Your message has been sent to our support team. We'll respond within 24 hours.");
-                        setHelpMessage('');
-                        setSendingHelp(false);
+                        try {
+                          const res = await fetch('http://localhost:5000/api/support', {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                              name: profileData.name || user.name,
+                              email: profileData.email || user.email,
+                              userId: user._id,
+                              subject: 'General Support Inquiry',
+                              message: helpMessage
+                            })
+                          });
+                          if (res.ok) {
+                            toast.success("Your message has been sent to our support team. We'll respond within 24 hours.");
+                            setHelpMessage('');
+                          } else {
+                            const errData = await res.json();
+                            toast.error(errData.message || "Failed to submit support request.");
+                          }
+                        } catch (err) {
+                          toast.error("Network error. Please check your connection.");
+                        } finally {
+                          setSendingHelp(false);
+                        }
                       }}
                       className="mt-4 w-full py-4 bg-[#FBBF24] text-[#1A2316] rounded-2xl font-black uppercase text-[10px] tracking-widest hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Save, Camera, Utensils, Sparkles, Minus, Plus, Percent } from 'lucide-react';
 import API from '../api';
+import { toast } from '../utils/toast';
 
 const EditDishPage = () => {
   const { id } = useParams();
@@ -45,20 +46,35 @@ const EditDishPage = () => {
 
   const handleSave = async (e) => {
     e.preventDefault();
+    if (!dish.name || !dish.name.trim()) { toast.error('Please enter a dish name'); return; }
+    if (!dish.category) { toast.error('Please select a category'); return; }
+    if (!dish.prepTime || !dish.prepTime.trim()) { toast.error('Please enter preparation time (e.g. 45 mins)'); return; }
+    if (!dish.description || !dish.description.trim()) { toast.error('Please enter a description for the dish'); return; }
+    if (!dish.price || Number(dish.price) <= 0) { toast.error('Please enter a valid price greater than 0'); return; }
+
     setSubmitting(true);
+    const formData = new FormData();
+    formData.append('name', dish.name.trim());
+    formData.append('category', dish.category);
+    formData.append('prepTime', dish.prepTime.trim());
+    formData.append('description', dish.description.trim());
+    formData.append('price', dish.price);
+    if (dish.image) {
+      formData.append('image', dish.image);
+    }
+    formData.append('pricingDetails', JSON.stringify(calcData));
+
     try {
-      await API.put(`/api/chef/dish/${id}`, {
-        name: dish.name,
-        price: dish.price,
-        category: dish.category,
-        description: dish.description,
-        prepTime: dish.prepTime,
-        pricingDetails: calcData
-      }, authH);
-      alert(`✅ ${dish.name} updated successfully!`);
+      await API.put(`/api/chef/dish/${id}`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          Authorization: `Bearer ${token}`
+        }
+      });
+      toast.success(`${dish.name} updated successfully!`);
       navigate('/chef/dashboard');
     } catch (e) {
-      alert('Error updating dish: ' + (e.response?.data?.message || e.message));
+      toast.error('Error updating dish: ' + (e.response?.data?.error || e.response?.data?.message || e.message));
     } finally { setSubmitting(false); }
   };
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Trash2, Plus, Minus, MapPin, CreditCard, ChevronRight, ShoppingBag, CheckCircle2, ArrowLeft, User, Phone, MessageSquare } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from '../utils/toast';
 
 const CartPage = ({ cartItems, setCartItems, currentUser }) => {
   const [step, setStep] = useState(1); // 1: Review, 2: Checkout
@@ -13,6 +14,30 @@ const CartPage = ({ cartItems, setCartItems, currentUser }) => {
   const [notes, setNotes] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [placingOrder, setPlacingOrder] = useState(false);
+  const [deliveryCoords, setDeliveryCoords] = useState(null); // { lat, lng } from GPS
+  const [detectingLocation, setDetectingLocation] = useState(false);
+
+  // Detect customer's GPS coordinates for the delivery pin
+  const detectDeliveryLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error('Geolocation is not supported by your browser.');
+      return;
+    }
+    setDetectingLocation(true);
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        setDeliveryCoords({ lat: coords.latitude, lng: coords.longitude });
+        setDetectingLocation(false);
+        toast.success('📍 Delivery location detected!');
+      },
+      (err) => {
+        console.error('GPS error:', err);
+        setDetectingLocation(false);
+        toast.error('Could not detect location. Please allow GPS access.');
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
 
   useEffect(() => {
     if (currentUser) {
@@ -89,23 +114,23 @@ const CartPage = ({ cartItems, setCartItems, currentUser }) => {
 
   const handleFinalConfirm = async () => {
     if (!currentUser) {
-      alert("Please login to place an order.");
+      toast.error("Please login to place an order.");
       navigate('/login');
       return;
     }
 
     if (!recipientName.trim()) {
-      alert("Please enter a recipient name.");
+      toast.error("Please enter a recipient name.");
       return;
     }
 
     if (!phone.trim()) {
-      alert("Please enter a contact phone number.");
+      toast.error("Please enter a contact phone number.");
       return;
     }
 
     if (!deliveryAddress.trim()) {
-      alert("Please enter a delivery address.");
+      toast.error("Please enter a delivery address.");
       return;
     }
 
@@ -122,7 +147,7 @@ const CartPage = ({ cartItems, setCartItems, currentUser }) => {
 
     const chefIds = Object.keys(itemsByChef);
     if (chefIds.length === 0) {
-      alert("No valid items in the cart.");
+      toast.error("No valid items in the cart.");
       return;
     }
 
@@ -152,7 +177,9 @@ const CartPage = ({ cartItems, setCartItems, currentUser }) => {
           totalAmount: totalAmount,
           deliveryAddress: `${recipientName} | Ph: ${phone} | Addr: ${deliveryAddress} ${notes ? `(Instructions: ${notes})` : ""}`,
           paymentMethod: paymentMethod,
-          deliveryCharges: deliveryFee
+          deliveryCharges: deliveryFee,
+          // GPS coordinates stored in Order for instant map display
+          deliveryLocation: deliveryCoords || undefined,
         };
 
         const response = await fetch('http://localhost:5000/api/orders/place', {
@@ -190,17 +217,17 @@ const CartPage = ({ cartItems, setCartItems, currentUser }) => {
       }
 
       if (results.length === 1 && results[0].order?._id) {
-        alert("🎉 Order placed successfully!");
+        toast.success("Order placed successfully! Track it live.");
         navigate(`/track/${results[0].order._id}`);
       } else {
-        alert(`🎉 Successfully placed ${results.length} orders!`);
+        toast.success(`Successfully placed ${results.length} orders!`);
         navigate('/profile', { state: { tab: 'orders' } });
       }
 
 
     } catch (error) {
       console.error(error);
-      alert("Error placing order: " + error.message);
+      toast.error("Error placing order: " + error.message);
     } finally {
       setPlacingOrder(false);
     }
@@ -374,6 +401,29 @@ const CartPage = ({ cartItems, setCartItems, currentUser }) => {
                           required
                         />
                       </div>
+                      {/* GPS Detection Button */}
+                      <button
+                        type="button"
+                        onClick={detectDeliveryLocation}
+                        disabled={detectingLocation}
+                        className={`mt-3 flex items-center gap-2 px-5 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                          deliveryCoords
+                            ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+                            : 'bg-[#FEF9ED] text-[#1A2316] border border-[#FBBF24]/30 hover:bg-[#FBBF24]/10'
+                        } disabled:opacity-50`}
+                      >
+                        <MapPin size={14} className={deliveryCoords ? 'text-emerald-500' : 'text-[#FBBF24]'} />
+                        {detectingLocation
+                          ? 'Detecting...'
+                          : deliveryCoords
+                          ? `✅ GPS Captured (${deliveryCoords.lat.toFixed(4)}, ${deliveryCoords.lng.toFixed(4)})`
+                          : '📍 Detect My Current Location'}
+                      </button>
+                      {deliveryCoords && (
+                        <p className="text-[9px] text-gray-400 font-bold mt-1 ml-1">
+                          Your exact GPS coordinates are saved for live map tracking.
+                        </p>
+                      )}
                     </div>
 
                     {/* Rider Instructions */}

@@ -26,7 +26,7 @@ const GlobalToast = () => {
   };
 
   return (
-    <div className="fixed top-24 right-6 z-[9999] flex flex-col gap-3 max-w-sm w-full pointer-events-none">
+    <div className="fixed top-8 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-3 max-w-sm w-full px-4 pointer-events-none">
       <AnimatePresence>
         {toasts.map(t => {
           const isSuccess = t.type === 'success';
@@ -35,8 +35,8 @@ const GlobalToast = () => {
           return (
             <motion.div
               key={t.id}
-              initial={{ opacity: 0, x: 50, y: -10, scale: 0.9 }}
-              animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
+              initial={{ opacity: 0, y: -50, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, scale: 0.85, transition: { duration: 0.2 } }}
               className={`pointer-events-auto p-5 rounded-[24px] shadow-2xl flex items-start gap-4 border backdrop-blur-md transition-all ${
                 isSuccess ? 'bg-[#1A2316]/95 border-emerald-500/30 text-white' :

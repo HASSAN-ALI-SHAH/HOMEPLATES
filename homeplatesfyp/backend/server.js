@@ -32,7 +32,32 @@ app.use(cors({
 
 // --- DATABASE CONNECTION ---
 mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/HomePlates')
-  .then(() => console.log("✅ MongoDB Connected Successfully!"))
+  .then(() => {
+    console.log("✅ MongoDB Connected Successfully!");
+    
+    // Auto-migrate: populate city on Menu items from chefId User if missing
+    const runMigration = async () => {
+      try {
+        const Menu = require('./models/Menu');
+        const User = require('./models/User');
+        const menusWithoutCity = await Menu.find({ city: { $exists: false } });
+        if (menusWithoutCity.length > 0) {
+          console.log(`🔄 Migrating ${menusWithoutCity.length} menu items to add city...`);
+          for (let menu of menusWithoutCity) {
+            const chef = await User.findById(menu.chefId);
+            if (chef && chef.city) {
+              menu.city = chef.city;
+              await menu.save();
+            }
+          }
+          console.log("✅ Menu migration completed!");
+        }
+      } catch (err) {
+        console.error("❌ Error migrating menu cities:", err);
+      }
+    };
+    runMigration();
+  })
   .catch((err) => console.error("❌ Database connection error:", err));
 
 // --- CREATE HTTP SERVER & INITIALIZE SOCKET.IO ---
@@ -149,6 +174,7 @@ const menuRoutes        = require("./routes/menuRoutes");
 const reviewRoutes      = require("./routes/reviewRoutes");
 const cartRoutes        = require("./routes/cartRoutes");
 const walletRoutes      = require("./routes/walletRoutes");
+const supportRoutes     = require("./routes/supportRoutes");
 
 // --- MOUNT ALL ROUTES ---
 app.use("/api/auth",          authRoutes);
@@ -166,6 +192,7 @@ app.use("/api/menu",          menuRoutes);
 app.use("/api/reviews",       reviewRoutes);
 app.use("/api/cart",          cartRoutes);
 app.use("/api/wallet",        walletRoutes);
+app.use("/api/support",       supportRoutes);
 app.use("/uploads",           express.static("uploads"));
 
 // --- SERVER START ---

@@ -88,8 +88,18 @@ const Navbar = ({ cartCount, currentUser, onLogout }) => {
               onClick={handleProfileClick}
               className={`flex w-10 h-10 items-center justify-center rounded-xl transition-all duration-300 overflow-hidden border-2 ${currentUser ? 'border-[#FBBF24]' : 'bg-gray-100 border-transparent hover:bg-[#FBBF24]'}`}
             >
-              {currentUser && currentUser.avatar ? (
-                <img src={currentUser.avatar} className="w-full h-full object-cover" alt="Profile" />
+              {currentUser && (currentUser.img || currentUser.avatar) ? (
+                <img 
+                  src={
+                    (currentUser.img || currentUser.avatar).startsWith('http') 
+                      ? (currentUser.img || currentUser.avatar) 
+                      : `http://localhost:5000${currentUser.img || currentUser.avatar}`
+                  } 
+                  className="w-full h-full object-cover" 
+                  alt="Profile" 
+                />
+              ) : currentUser ? (
+                <span className="font-black text-sm text-[#1A2316]">{(currentUser.name || 'U').charAt(0).toUpperCase()}</span>
               ) : (
                 <User size={20} strokeWidth={2.5} />
               )}
@@ -104,12 +114,25 @@ const Navbar = ({ cartCount, currentUser, onLogout }) => {
                   exit={{ opacity: 0, y: 10, scale: 0.95 }}
                   className="absolute right-0 mt-4 w-56 bg-white rounded-[30px] shadow-[0_20px_50px_rgba(0,0,0,0.12)] border border-gray-100 p-2 z-[110]"
                 >
-                  <div className="px-5 py-4 border-b border-gray-50 mb-2">
-                    <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Signed in as</p>
-                    <p className="text-[12px] font-black text-[#1A2316] truncate italic uppercase">{currentUser.name}</p>
-                    <span className="bg-orange-100 text-orange-600 text-[8px] font-black px-2 py-0.5 rounded-full uppercase mt-1 inline-block">
-                      {currentUser.role}
-                    </span>
+                  <div className="px-5 py-4 border-b border-gray-50 mb-2 flex items-center gap-3">
+                    {(currentUser.img || currentUser.avatar) ? (
+                      <img
+                        src={(currentUser.img || currentUser.avatar).startsWith('http') ? (currentUser.img || currentUser.avatar) : `http://localhost:5000${currentUser.img || currentUser.avatar}`}
+                        className="w-10 h-10 rounded-xl object-cover border-2 border-[#FBBF24] flex-shrink-0"
+                        alt="Profile"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-xl bg-[#1A2316] flex items-center justify-center flex-shrink-0">
+                        <span className="font-black text-[#FBBF24] text-sm">{(currentUser.name || 'U').charAt(0).toUpperCase()}</span>
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Signed in as</p>
+                      <p className="text-[12px] font-black text-[#1A2316] truncate italic uppercase">{currentUser.name}</p>
+                      <span className="bg-orange-100 text-orange-600 text-[8px] font-black px-2 py-0.5 rounded-full uppercase mt-1 inline-block">
+                        {currentUser.role}
+                      </span>
+                    </div>
                   </div>
 
                   {/* CUSTOMER ONLY: My Profile */}

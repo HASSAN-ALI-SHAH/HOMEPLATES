@@ -15,6 +15,10 @@ router.post('/signup', async (req, res) => {
   try {
     const { name, email, password, role, phone, cnic, city } = req.body;
     
+    if (!city || !['Lahore', 'Karachi', 'Islamabad'].includes(city)) {
+      return res.status(400).json({ message: "City is required and must be Lahore, Karachi, or Islamabad" });
+    }
+    
     // Check if user already exists
     const userExists = await User.findOne({ email });
     if (userExists) {

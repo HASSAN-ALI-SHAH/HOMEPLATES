@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChefHat, Eye, EyeOff, ArrowRight, Bike, KeyRound, RefreshCw, X, AlertCircle } from 'lucide-react';
+import { ChefHat, Eye, EyeOff, ArrowRight, Bike, KeyRound, RefreshCw, X, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import API from './api';
 import { toast } from './utils/toast';
@@ -16,6 +16,8 @@ const Auth = ({ onLogin, isModal = false, currentUser }) => {
   
   // Custom Alert state
   const [alertInfo, setAlertInfo] = useState(null); // { type: 'success' | 'error' | 'dev', msg: '', devOtp?: '' }
+  const [formError, setFormError] = useState(null);
+  const [formSuccess, setFormSuccess] = useState(null);
 
   useEffect(() => {
     if (isModal) return;
@@ -37,13 +39,17 @@ const Auth = ({ onLogin, isModal = false, currentUser }) => {
   });
 
   const showAlert = (msg, type = 'success', devOtp = '') => {
+    setFormError(null);
+    setFormSuccess(null);
     if (type === 'dev') {
       setAlertInfo({ msg, type, devOtp });
     } else {
       if (type === 'success') {
         toast.success(msg);
+        setFormSuccess(msg);
       } else if (type === 'error') {
         toast.error(msg);
+        setFormError(msg);
       }
     }
   };
@@ -62,6 +68,8 @@ const Auth = ({ onLogin, isModal = false, currentUser }) => {
     e.preventDefault();
     setIsSubmitting(true);
     setAlertInfo(null);
+    setFormError(null);
+    setFormSuccess(null);
 
     try {
       if (isLogin) {
@@ -127,6 +135,8 @@ const Auth = ({ onLogin, isModal = false, currentUser }) => {
   const handleVerifyOtp = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setFormError(null);
+    setFormSuccess(null);
 
     try {
       const response = await API.post('/api/auth/verify-otp', {
@@ -163,6 +173,32 @@ const Auth = ({ onLogin, isModal = false, currentUser }) => {
     }
   };
 
+  const FormAlert = () => {
+    if (formError) {
+      return (
+        <div className="bg-red-50 border border-red-200 text-red-600 px-5 py-4 rounded-2xl flex items-center gap-3 text-xs font-bold mb-4 animate-in fade-in duration-200">
+          <AlertCircle size={16} className="text-red-500 flex-shrink-0" />
+          <span className="flex-1 text-left">{formError}</span>
+          <button type="button" onClick={() => setFormError(null)} className="text-red-400 hover:text-red-600 transition-colors">
+            <X size={14} />
+          </button>
+        </div>
+      );
+    }
+    if (formSuccess) {
+      return (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-5 py-4 rounded-2xl flex items-center gap-3 text-xs font-bold mb-4 animate-in fade-in duration-200">
+          <CheckCircle2 size={16} className="text-emerald-500 flex-shrink-0" />
+          <span className="flex-1 text-left">{formSuccess}</span>
+          <button type="button" onClick={() => setFormSuccess(null)} className="text-emerald-500 hover:text-emerald-700 transition-colors">
+            <X size={14} />
+          </button>
+        </div>
+      );
+    }
+    return null;
+  };
+
   const RoleButtons = () => (
     <div className="flex bg-gray-100 p-1 rounded-xl w-fit my-4">
       {['user', 'chef', 'rider'].map((r) => (
@@ -178,6 +214,7 @@ const Auth = ({ onLogin, isModal = false, currentUser }) => {
     <div className="w-full flex flex-col justify-center">
       <h1 className="text-3xl font-black text-[#1A2316] italic uppercase mb-2">Verify Email<span className="text-[#FBBF24]">.</span></h1>
       <p className="text-xs text-gray-500 font-bold mb-6">Enter the 6-digit OTP code sent to <span className="text-[#1A2316] underline">{formData.email}</span></p>
+      <FormAlert />
       
       <form onSubmit={handleVerifyOtp} className="space-y-4">
         <div className="relative">
@@ -249,7 +286,7 @@ const Auth = ({ onLogin, isModal = false, currentUser }) => {
               {step === 'otp' ? "Verify \nEmail!" : isLogin ? "Hello \nFriend!" : "Welcome \nBack!"}
             </h2>
             {step !== 'otp' && (
-              <button type="button" onClick={() => { setIsLogin(!isLogin); handleRoleChange('user'); setAlertInfo(null); }} className="px-12 py-4 border-2 border-[#FBBF24] text-[#FBBF24] rounded-full font-black uppercase text-[10px] tracking-widest hover:bg-[#FBBF24] hover:text-[#1A2316] transition-all">
+              <button type="button" onClick={() => { setIsLogin(!isLogin); handleRoleChange('user'); setAlertInfo(null); setFormError(null); setFormSuccess(null); }} className="px-12 py-4 border-2 border-[#FBBF24] text-[#FBBF24] rounded-full font-black uppercase text-[10px] tracking-widest hover:bg-[#FBBF24] hover:text-[#1A2316] transition-all">
                 {isLogin ? "Create Account" : "Login Instead"}
               </button>
             )}
@@ -265,24 +302,24 @@ const Auth = ({ onLogin, isModal = false, currentUser }) => {
             <>
               <h1 className="text-4xl font-black text-[#1A2316] italic uppercase mb-2">Signup<span className="text-[#FBBF24]">.</span></h1>
               <RoleButtons />
+              <FormAlert />
               <form onSubmit={handleSubmit} className="space-y-3 overflow-y-auto max-h-[50vh] pr-2 custom-scrollbar">
                 <input type="text" name="name" placeholder="Full Name" onChange={handleInput} className="w-full px-5 py-3 bg-gray-50 rounded-xl outline-none font-bold text-sm border-2 border-transparent focus:border-[#FBBF24]/20" required={!isLogin} />
                 <input type="email" name="email" placeholder="Email" onChange={handleInput} className="w-full px-5 py-3 bg-gray-50 rounded-xl outline-none font-bold text-sm border-2 border-transparent focus:border-[#FBBF24]/20" required />
                 <input type="text" name="phone" placeholder="Mobile Number" onChange={handleInput} className="w-full px-5 py-3 bg-gray-50 rounded-xl outline-none font-bold text-sm border-2 border-transparent focus:border-[#FBBF24]/20" required={!isLogin} />
                 {(role === 'chef' || role === 'rider') && <input type="text" name="cnic" placeholder="CNIC/License" onChange={handleInput} className="w-full px-5 py-3 bg-gray-50 rounded-xl outline-none font-bold text-sm border-2 border-transparent focus:border-[#FBBF24]/20" required />}
-                {role === 'chef' && (
-                  <select 
-                    name="city" 
-                    onChange={handleInput} 
-                    className="w-full px-5 py-3 bg-gray-50 rounded-xl outline-none font-bold text-sm border-2 border-transparent focus:border-[#FBBF24]/20" 
-                    required
-                  >
-                    <option value="">Select City *</option>
-                    <option value="Lahore">Lahore</option>
-                    <option value="Karachi">Karachi</option>
-                    <option value="Islamabad">Islamabad</option>
-                  </select>
-                )}
+                <select 
+                  name="city" 
+                  value={formData.city}
+                  onChange={handleInput} 
+                  className="w-full px-5 py-3 bg-gray-50 rounded-xl outline-none font-bold text-sm border-2 border-transparent focus:border-[#FBBF24]/20" 
+                  required
+                >
+                  <option value="">Select City *</option>
+                  <option value="Lahore">Lahore</option>
+                  <option value="Karachi">Karachi</option>
+                  <option value="Islamabad">Islamabad</option>
+                </select>
                 
                 <div className="relative">
                   <input type={showPassword ? "text" : "password"} name="password" placeholder="Password" onChange={handleInput} className="w-full px-5 py-3 bg-gray-50 rounded-xl outline-none font-bold text-sm border-2 border-transparent focus:border-[#FBBF24]/20" required />
@@ -308,6 +345,7 @@ const Auth = ({ onLogin, isModal = false, currentUser }) => {
           ) : (
             <>
               <h1 className="text-4xl font-black text-[#1A2316] italic uppercase mb-2">Login<span className="text-[#FBBF24]">.</span></h1>
+              <FormAlert />
               <form onSubmit={handleSubmit} className="space-y-4">
                 <input type="email" name="email" placeholder="Email Address" onChange={handleInput} className="w-full px-5 py-4 bg-gray-50 rounded-2xl outline-none font-bold text-sm border-2 border-transparent focus:border-[#FBBF24]/20 transition-all shadow-sm" required />
                 <div className="relative">

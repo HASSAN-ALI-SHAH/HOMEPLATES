@@ -17,6 +17,7 @@ const menuSchema = new mongoose.Schema({
     distance: { type: Number, default: 0 },
     time: { type: String }, // Estimated delivery time
     isAvailable: { type: Boolean, default: true },
+    city: { type: String, enum: ['Lahore', 'Karachi', 'Islamabad'] },
     
     // Pricing Calculator
     pricingDetails: {

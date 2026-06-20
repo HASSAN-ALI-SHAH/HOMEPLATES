@@ -1,3 +1,4 @@
+const User = require('./models/User');
 let io;
 
 module.exports = {
@@ -20,25 +21,73 @@ module.exports = {
         socket.join(`chef_${chefId}`);
       });
 
+      // Customer joins their personal notification room
+      socket.on('join_user_room', (userId) => {
+        console.log(`User joined room: user_${userId}`);
+        socket.join(`user_${userId}`);
+      });
+
       // Rider joins their personal room
-      socket.on('join_rider_room', (riderId) => {
+      socket.on('join_rider_room', async (riderId) => {
         console.log(`Rider joined room: rider_${riderId}`);
         socket.join(`rider_${riderId}`);
         // Also join the broadcast room so rider gets notified of ALL new available orders by default
         socket.join('riders_online');
         console.log(`Rider ${riderId} joined riders_online broadcast room`);
+        try {
+          const rider = await User.findById(riderId);
+          if (rider && rider.city) {
+            // Leave any old city rooms to avoid cross-city notifications
+            for (const room of socket.rooms) {
+              if (room.startsWith('riders_') && room !== 'riders_online') {
+                socket.leave(room);
+              }
+            }
+            const cityRoom = `riders_${rider.city.toLowerCase()}`;
+            socket.join(cityRoom);
+            console.log(`Rider ${riderId} joined city room: ${cityRoom}`);
+          }
+        } catch (e) {
+          console.error("Error joining city room for rider:", e);
+        }
       });
 
       // Rider goes online
-      socket.on('go_online', (riderId) => {
+      socket.on('go_online', async (riderId) => {
         console.log(`Rider ${riderId} went ONLINE`);
         socket.join('riders_online');
+        try {
+          const rider = await User.findById(riderId);
+          if (rider && rider.city) {
+            // Leave any old city rooms to avoid cross-city notifications
+            for (const room of socket.rooms) {
+              if (room.startsWith('riders_') && room !== 'riders_online') {
+                socket.leave(room);
+              }
+            }
+            const cityRoom = `riders_${rider.city.toLowerCase()}`;
+            socket.join(cityRoom);
+            console.log(`Rider ${riderId} went ONLINE for city room: ${cityRoom}`);
+          }
+        } catch (e) {
+          console.error("Error going online for rider:", e);
+        }
       });
 
       // Rider goes offline
-      socket.on('go_offline', (riderId) => {
+      socket.on('go_offline', async (riderId) => {
         console.log(`Rider ${riderId} went OFFLINE`);
         socket.leave('riders_online');
+        try {
+          const rider = await User.findById(riderId);
+          if (rider && rider.city) {
+            const cityRoom = `riders_${rider.city.toLowerCase()}`;
+            socket.leave(cityRoom);
+            console.log(`Rider ${riderId} went OFFLINE for city room: ${cityRoom}`);
+          }
+        } catch (e) {
+          console.error("Error going offline for rider:", e);
+        }
       });
 
       // Customer or Rider joins order tracking room
@@ -47,16 +96,33 @@ module.exports = {
         socket.join(`order_${orderId}`);
       });
 
+      // Chef joins order room during pickup leg to see rider moving toward kitchen
+      socket.on('join_order_room', (orderId) => {
+        console.log(`Chef joined order room: order_${orderId}`);
+        socket.join(`order_${orderId}`);
+      });
+
+      // Chef leaves order room once food is picked up (no longer needs tracking)
+      socket.on('leave_order_room', (orderId) => {
+        console.log(`Chef left order room: order_${orderId}`);
+        socket.leave(`order_${orderId}`);
+      });
+
       // Admin joins admin room
       socket.on('join_admin_room', () => {
         console.log(`Admin joined admin room`);
         socket.join('admin_room');
       });
       
-      // Rider broadcasts live location
-      socket.on('update_location', ({ orderId, lat, lng }) => {
+      // Rider broadcasts live location — forwarded to order-room (customer) AND chef room
+      socket.on('update_location', ({ orderId, lat, lng, chefId }) => {
         console.log(`Rider live location update for order_${orderId}: [${lat}, ${lng}]`);
-        io.to(`order_${orderId}`).emit('location_update', { lat, lng });
+        // Notify customer tracking page
+        io.to(`order_${orderId}`).emit('location_update', { lat, lng, orderId });
+        // Notify chef dashboard in real-time
+        if (chefId) {
+          io.to(`chef_${chefId}`).emit('rider_location_update', { lat, lng, orderId });
+        }
       });
 
       socket.on('disconnect', () => {

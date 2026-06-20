@@ -58,12 +58,12 @@ const AppRoutes = ({ cart, setCart, cartCount, currentUser, onLogin, onLogout, h
 
       <Routes>
         <Route path="/" element={<HomePlatesLanding />} /> 
-        <Route path="/explore" element={<ExploreFood />} />
+        <Route path="/explore" element={<ExploreFood currentUser={currentUser} />} />
         <Route path="/chefs" element={<AllChefs />} />
         <Route path="/login" element={<Auth onLogin={handleLogin} currentUser={currentUser} />} />
         <Route path="/auth" element={<Auth onLogin={handleLogin} currentUser={currentUser} />} />
         
-        <Route path="/profile" element={currentUser ? <UserProfile user={currentUser} onLogout={onLogout} /> : <Navigate to="/login" />} />
+        <Route path="/profile" element={currentUser ? <UserProfile user={currentUser} onLogout={onLogout} onUserUpdate={onLogin} /> : <Navigate to="/login" />} />
         <Route path="/cart" element={<CartPage cartItems={cart} setCartItems={setCart} currentUser={currentUser} />} />
         <Route path="/order/:dishId" element={<OrderPage onAddToCart={handleAddToCart} />} />
         <Route path="/track/:orderId" element={<OrderTracking />} />
@@ -72,10 +72,10 @@ const AppRoutes = ({ cart, setCart, cartCount, currentUser, onLogin, onLogout, h
         <Route path="/admin-entry" element={<AdminLogin onLogin={handleLogin} />} />
         <Route path="/admin/dashboard" element={currentUser?.role === 'admin' ? <AdminDashboard /> : <Navigate to="/admin-entry" />} />
         
-        <Route path="/rider/dashboard" element={currentUser?.role === 'rider' ? <RiderDashboard user={currentUser} onLogout={onLogout} /> : <Navigate to="/login" />} />
+        <Route path="/rider/dashboard" element={currentUser?.role === 'rider' ? <RiderDashboard user={currentUser} onLogout={onLogout} onUserUpdate={onLogin} /> : <Navigate to="/login" />} />
 
         <Route path="/chef/:id" element={<ChefProfile handleAddToCart={handleAddToCart} />} />
-        <Route path="/chef/dashboard" element={currentUser ? (currentUser.role === 'chef' ? <ChefDashboard /> : <Navigate to="/explore" />) : <Navigate to="/login" />} />
+        <Route path="/chef/dashboard" element={currentUser ? (currentUser.role === 'chef' ? <ChefDashboard onLogout={onLogout} onUserUpdate={onLogin} /> : <Navigate to="/explore" />) : <Navigate to="/login" />} />
         <Route path="/chef/add-dish" element={currentUser ? (currentUser.role === 'chef' ? <AddDishPage /> : <Navigate to="/explore" />) : <Navigate to="/login" />} />
         <Route path="/chef/edit-dish/:id" element={currentUser ? (currentUser.role === 'chef' ? <EditDishPage /> : <Navigate to="/explore" />) : <Navigate to="/login" />} />
         <Route path="/chef/wallet" element={currentUser ? (currentUser.role === 'chef' ? <WalletPage /> : <Navigate to="/explore" />) : <Navigate to="/login" />} />

@@ -3,7 +3,7 @@ import {
   Users, ShoppingBag, CheckCircle, XCircle, 
   BarChart3, ShieldCheck, TrendingUp, ShieldAlert, LogOut, 
   Activity, Gavel, UserMinus, UserCheck, CreditCard,
-  Loader2, HelpCircle, MessageSquare, Clock, RefreshCw, Sparkles, Package, Bell
+  Loader2, HelpCircle, MessageSquare, Clock, RefreshCw, Sparkles, Package, Bell, Bike
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import API from '../api';
@@ -24,11 +24,16 @@ const AdminDashboard = () => {
   const [pendingPayouts, setPendingPayouts] = useState([]);
   const [activeSubscriptions, setActiveSubscriptions] = useState([]);
   const [dailyDeliveries, setDailyDeliveries] = useState([]);
+  const [riderMonitoring, setRiderMonitoring] = useState([]);
   const [selectedScreenshot, setSelectedScreenshot] = useState(null);
   const [settings, setSettings] = useState({ platformFee: 10, minimumWithdrawal: 1000, deliveryRadius: 15 });
   const [stats, setStats] = useState({ totalUsers: 0, totalChefs: 0, totalOrders: 0, totalRevenue: 0, activeSubscriptions: 0, revenueByDay: [], topChefs: [] });
   const [notifications, setNotifications] = useState([]);
   const [showNoti, setShowNoti] = useState(false);
+  const [tickets, setTickets] = useState([]);
+  const [supportFilter, setSupportFilter] = useState('open');
+  const [replyText, setReplyText] = useState({});
+  const [ticketSubmitting, setTicketSubmitting] = useState({});
 
   const addNotification = useCallback((title, body) => {
     setNotifications(prev => [
@@ -44,7 +49,7 @@ const AdminDashboard = () => {
   const fetchAllAdminData = useCallback(async () => {
     setLoading(true);
     try {
-      const [statsRes, pendingChefsRes, usersRes, withdrawalsRes, settingsRes, pendingPaymentsRes, pendingPayoutsRes, activeSubsRes, dailyDeliveriesRes] = await Promise.allSettled([
+      const [statsRes, pendingChefsRes, usersRes, withdrawalsRes, settingsRes, pendingPaymentsRes, pendingPayoutsRes, activeSubsRes, dailyDeliveriesRes, ridersRes, supportRes] = await Promise.allSettled([
         API.get('/api/admin/analytics', authH),
         API.get('/api/admin/chefs/pending', authH),
         API.get('/api/admin/users', authH),
@@ -54,6 +59,8 @@ const AdminDashboard = () => {
         API.get('/api/subscriptions/admin/payouts', authH),
         API.get('/api/admin/subscriptions/active', authH),
         API.get('/api/admin/daily-deliveries', authH),
+        API.get('/api/admin/riders', authH),
+        API.get('/api/admin/support', authH),
       ]);
 
       if (statsRes.status === 'fulfilled') setStats(statsRes.value.data);
@@ -65,6 +72,8 @@ const AdminDashboard = () => {
       if (pendingPayoutsRes.status === 'fulfilled') setPendingPayouts(pendingPayoutsRes.value.data);
       if (activeSubsRes.status === 'fulfilled') setActiveSubscriptions(activeSubsRes.value.data || []);
       if (dailyDeliveriesRes.status === 'fulfilled') setDailyDeliveries(dailyDeliveriesRes.value.data || []);
+      if (ridersRes.status === 'fulfilled') setRiderMonitoring(ridersRes.value.data || []);
+      if (supportRes.status === 'fulfilled') setTickets(supportRes.value.data || []);
     } catch (e) {
       console.error("Error fetching admin data:", e);
     } finally {
@@ -87,7 +96,6 @@ const AdminDashboard = () => {
     const socket = io('http://localhost:5000', { transports: ['websocket', 'polling'] });
 
     socket.on('connect', () => {
-      console.log('Admin socket connected:', socket.id);
       socket.emit('join_admin_room');
     });
 
@@ -186,6 +194,47 @@ const AdminDashboard = () => {
     }
   };
 
+  // --- HELP & SUPPORT ACTIONS ---
+  const handleReplyTicket = async (ticketId) => {
+    const reply = replyText[ticketId];
+    if (!reply || !reply.trim()) {
+      toast.error("Reply message cannot be empty!");
+      return;
+    }
+    setTicketSubmitting(prev => ({ ...prev, [ticketId]: true }));
+    try {
+      await API.patch(`/api/admin/support/${ticketId}`, { adminReply: reply, status: 'resolved' }, authH);
+      toast.success("Reply sent & ticket marked as resolved successfully!");
+      setReplyText(prev => ({ ...prev, [ticketId]: '' }));
+      fetchAllAdminData();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to submit reply.");
+    } finally {
+      setTicketSubmitting(prev => ({ ...prev, [ticketId]: false }));
+    }
+  };
+
+  const handleResolveTicket = async (ticketId) => {
+    try {
+      await API.patch(`/api/admin/support/${ticketId}`, { status: 'resolved' }, authH);
+      toast.success("Ticket marked as resolved!");
+      fetchAllAdminData();
+    } catch (err) {
+      toast.error("Failed to update ticket status.");
+    }
+  };
+
+  const handleDeleteTicket = async (ticketId) => {
+    if (!window.confirm("Are you sure you want to delete this ticket?")) return;
+    try {
+      await API.delete(`/api/admin/support/${ticketId}`, authH);
+      toast.success("Ticket deleted successfully!");
+      fetchAllAdminData();
+    } catch (err) {
+      toast.error("Failed to delete ticket.");
+    }
+  };
+
   const handleLogout = () => {
     localStorage.clear();
     navigate('/admin-entry');
@@ -213,7 +262,9 @@ const AdminDashboard = () => {
             { id: 'subscriptions', label: 'Subscription Manager', icon: Package },
             { id: 'governance', label: 'Governance', icon: Gavel },
             { id: 'management', label: 'User Database', icon: Users },
+            { id: 'riders', label: 'Rider Monitoring', icon: Bike },
             { id: 'withdrawals', label: 'Withdraw Requests', icon: CreditCard },
+            { id: 'support', label: 'Help & Support', icon: HelpCircle },
           ].map((item) => (
             <button 
               key={item.id}
@@ -231,6 +282,11 @@ const AdminDashboard = () => {
               )}
               {item.id === 'subscriptions' && (pendingPayments.length + pendingPayouts.length) > 0 && (
                 <span className="bg-[#FBBF24] text-[#1A2316] text-[9px] px-2 py-0.5 rounded-full font-mono font-bold">{pendingPayments.length + pendingPayouts.length}</span>
+              )}
+              {item.id === 'support' && tickets.filter(t => t.status === 'open' || t.status === 'in-progress').length > 0 && (
+                <span className="bg-red-500 text-white text-[9px] px-2 py-0.5 rounded-full font-mono font-bold">
+                  {tickets.filter(t => t.status === 'open' || t.status === 'in-progress').length}
+                </span>
               )}
             </button>
           ))}
@@ -543,6 +599,127 @@ const AdminDashboard = () => {
               </div>
             )}
 
+            {/* Rider Monitoring tab */}
+            {activeTab === 'riders' && (
+              <div className="space-y-6">
+                <div className="bg-[#1A2316] p-8 rounded-[35px] text-white flex items-center gap-4 border-l-[8px] border-[#FBBF24]">
+                  <Bike size={24} className="text-[#FBBF24]" />
+                  <p className="text-xs font-bold text-gray-300">Logistics and Delivery Rider Fleet Monitoring. View rider status, city location, active/accepted deliveries, ignored requests, and chronological status change logs.</p>
+                </div>
+
+                {riderMonitoring.length === 0 ? (
+                  <div className="bg-white p-20 rounded-[40px] border border-gray-100 flex flex-col items-center justify-center text-center text-gray-300">
+                    <Bike size={48} className="opacity-20 mb-4" />
+                    <p className="font-black uppercase text-xs tracking-widest text-gray-400">No riders registered in system yet</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-6">
+                    {riderMonitoring.map(log => {
+                      const rider = log.rider;
+                      return (
+                        <div key={rider._id} className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm space-y-6 text-left">
+                          {/* Top Section: Rider Details */}
+                          <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-gray-100 pb-5 gap-4">
+                            <div className="flex gap-4 items-center">
+                              <div className="w-16 h-16 rounded-[20px] bg-[#1A2316] flex items-center justify-center font-black text-[#FBBF24] text-xl overflow-hidden border-2 border-[#FBBF24]">
+                                <Bike size={28} />
+                              </div>
+                              <div>
+                                <h4 className="font-black text-lg text-[#1A2316] uppercase">{rider.name}</h4>
+                                <p className="text-xs text-gray-400">Email: {rider.email} · Phone: {rider.phone}</p>
+                                <p className="text-[10px] text-gray-400 mt-1">Vehicle: <strong className="text-gray-600">{rider.vehicle}</strong></p>
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <span className="bg-blue-50 text-blue-700 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider">City: {rider.city}</span>
+                              <span className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider ${rider.isActive ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                                {rider.isActive ? 'Active Duty' : 'Suspended'}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Stats cards for rider */}
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="bg-[#F4F7F2] p-5 rounded-2xl border border-gray-50">
+                              <p className="text-[9px] font-black uppercase text-gray-400">Currently Assigned (Active)</p>
+                              <p className="text-2xl font-black text-[#1A2316] mt-1">{log.assignedOrders.length} Order(s)</p>
+                            </div>
+                            <div className="bg-[#FEF9ED] p-5 rounded-2xl border border-gray-50">
+                              <p className="text-[9px] font-black uppercase text-gray-400">Total Accepted Deliveries</p>
+                              <p className="text-2xl font-black text-[#1A2316] mt-1">{log.acceptedOrders.length} Order(s)</p>
+                            </div>
+                            <div className="bg-red-50/50 p-5 rounded-2xl border border-gray-50">
+                              <p className="text-[9px] font-black uppercase text-gray-400">Ignored Requests</p>
+                              <p className="text-2xl font-black text-red-600 mt-1">{log.ignoredOrders.length} Time(s)</p>
+                            </div>
+                          </div>
+
+                          {/* Lists: Active Orders, Ignored Requests, History Log */}
+                          <div className="space-y-4">
+                            {/* Assigned Orders Details */}
+                            {log.assignedOrders.length > 0 && (
+                              <div className="border border-gray-100 rounded-2xl p-5">
+                                <h5 className="font-black text-xs uppercase tracking-widest text-[#1A2316] mb-3">📍 Active Assignment Details</h5>
+                                <div className="space-y-2">
+                                  {log.assignedOrders.map(order => (
+                                    <div key={order._id} className="flex justify-between items-center text-xs py-2 border-b border-gray-50 last:border-0">
+                                      <div>
+                                        <p className="font-bold text-gray-700">Order ID: #{order._id.toString().slice(-6)} ({order.status})</p>
+                                        <p className="text-[10px] text-gray-400">Chef: {order.chef?.kitchenName || order.chef?.name} → Customer: {order.user?.name}</p>
+                                      </div>
+                                      <span className="font-mono font-bold text-gray-500">PKR {order.totalAmount}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Ignored Requests Details */}
+                            {log.ignoredOrders.length > 0 && (
+                              <div className="border border-gray-100 rounded-2xl p-5 bg-red-50/10">
+                                <h5 className="font-black text-xs uppercase tracking-widest text-red-700 mb-3">🚫 Ignored Orders List</h5>
+                                <div className="max-h-36 overflow-y-auto space-y-2">
+                                  {log.ignoredOrders.map(order => (
+                                    <div key={order._id} className="flex justify-between items-center text-xs py-2 border-b border-gray-50 last:border-0">
+                                      <div>
+                                        <p className="font-bold text-gray-700">Order ID: #{order._id.toString().slice(-6)}</p>
+                                        <p className="text-[10px] text-gray-400">Chef: {order.chef?.kitchenName || order.chef?.name} → Customer: {order.user?.name}</p>
+                                      </div>
+                                      <span className="text-gray-400 text-[10px]">{new Date(order.updatedAt).toLocaleDateString('en-PK')}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Delivery Status History Log */}
+                            <div className="border border-gray-100 rounded-2xl p-5 bg-slate-50/50">
+                              <h5 className="font-black text-xs uppercase tracking-widest text-slate-700 mb-3">📜 Delivery Status History</h5>
+                              {log.historyLog.length === 0 ? (
+                                <p className="text-xs text-gray-400 italic">No status change history recorded yet.</p>
+                              ) : (
+                                <div className="max-h-48 overflow-y-auto divide-y divide-gray-100">
+                                  {log.historyLog.map((hist, idx) => (
+                                    <div key={idx} className="flex justify-between items-center text-xs py-3">
+                                      <div>
+                                        <p className="font-bold text-gray-700">Marked Order #{hist.orderId.toString().slice(-6)} as <strong className="text-[#1A2316] uppercase">{hist.status}</strong></p>
+                                        <p className="text-[10px] text-gray-400">From Chef {hist.chefName} to Customer {hist.customerName}</p>
+                                      </div>
+                                      <span className="text-gray-400 text-[10px]">{new Date(hist.timestamp).toLocaleString('en-PK')}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* 5. WITHDRAW PAYMENTS */}
             {activeTab === 'withdrawals' && (
               <div className="space-y-6">
@@ -809,6 +986,128 @@ const AdminDashboard = () => {
                         </div>
                       </div>
                     )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 7. HELP & SUPPORT PANEL */}
+            {activeTab === 'support' && (
+              <div className="space-y-6">
+                <div className="bg-[#1A2316] p-8 rounded-[35px] text-white flex items-center gap-4 border-l-[8px] border-[#FBBF24]">
+                  <HelpCircle size={24} className="text-[#FBBF24]" />
+                  <p className="text-xs font-bold text-gray-300">
+                    Help & Support Query Desk. View user questions, send email responses to users, mark tickets as resolved, or clean up ticket history.
+                  </p>
+                </div>
+
+                <div className="flex gap-4">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase self-center mr-2">Filter Status:</span>
+                  {[
+                    { key: 'open', label: `Open / In Progress (${tickets.filter(t => t.status === 'open' || t.status === 'in-progress').length})` },
+                    { key: 'resolved', label: `Resolved (${tickets.filter(t => t.status === 'resolved').length})` },
+                    { key: 'all', label: `All Tickets (${tickets.length})` }
+                  ].map(tab => (
+                    <button
+                      key={tab.key}
+                      onClick={() => setSupportFilter(tab.key)}
+                      className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all ${supportFilter === tab.key ? 'bg-[#1A2316] text-[#FBBF24]' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                {tickets.filter(ticket => {
+                  if (supportFilter === 'open') return ticket.status === 'open' || ticket.status === 'in-progress';
+                  if (supportFilter === 'resolved') return ticket.status === 'resolved';
+                  return true;
+                }).length === 0 ? (
+                  <div className="bg-white p-20 rounded-[40px] border border-gray-100 flex flex-col items-center justify-center text-center text-gray-300">
+                    <MessageSquare size={48} className="opacity-20 mb-4" />
+                    <p className="font-black uppercase text-xs tracking-widest text-gray-400">No support tickets found</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-6">
+                    {tickets.filter(ticket => {
+                      if (supportFilter === 'open') return ticket.status === 'open' || ticket.status === 'in-progress';
+                      if (supportFilter === 'resolved') return ticket.status === 'resolved';
+                      return true;
+                    }).map(ticket => (
+                      <div key={ticket._id} className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm space-y-6 text-left">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-gray-50 pb-5 gap-4">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-black text-lg text-[#1A2316] uppercase">{ticket.name}</h4>
+                              {ticket.userId && (
+                                <span className="bg-[#1A2316]/5 text-[#1A2316] text-[8px] font-black px-2 py-0.5 rounded-full uppercase">Registered User</span>
+                              )}
+                            </div>
+                            <p className="text-xs text-gray-400 font-bold mt-1">Email: {ticket.email}</p>
+                            <p className="text-[10px] text-gray-400 font-bold">Inquiry Date: {new Date(ticket.createdAt).toLocaleString('en-PK')}</p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-3">
+                            <span className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider ${
+                              ticket.status === 'open' ? 'bg-red-50 text-red-600' :
+                              ticket.status === 'in-progress' ? 'bg-yellow-50 text-yellow-700' :
+                              'bg-green-50 text-green-700'
+                            }`}>
+                              {ticket.status}
+                            </span>
+                            {ticket.status !== 'resolved' && (
+                              <button
+                                onClick={() => handleResolveTicket(ticket._id)}
+                                className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider bg-green-500 text-white hover:bg-green-600 transition-colors"
+                              >
+                                Resolve
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleDeleteTicket(ticket._id)}
+                              className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                              title="Delete Ticket"
+                            >
+                              <XCircle size={18} />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="bg-gray-50/50 p-5 rounded-2xl border border-gray-50/80">
+                          <p className="text-[9px] font-black uppercase text-gray-400 mb-2">Subject: {ticket.subject}</p>
+                          <p className="text-sm text-gray-700 font-medium whitespace-pre-wrap">{ticket.message}</p>
+                        </div>
+
+                        {ticket.adminReply ? (
+                          <div className="bg-[#1A2316]/5 p-5 rounded-2xl border border-[#1A2316]/10">
+                            <div className="flex justify-between items-center mb-2">
+                              <p className="text-[9px] font-black uppercase text-[#1A2316]">Admin Reply</p>
+                              {ticket.repliedAt && (
+                                <p className="text-[8px] text-gray-400 font-bold">{new Date(ticket.repliedAt).toLocaleString('en-PK')}</p>
+                              )}
+                            </div>
+                            <p className="text-sm text-[#1A2316] font-bold">{ticket.adminReply}</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-3 pt-2">
+                            <label className="text-[9px] font-black uppercase text-gray-400 block mb-1">Reply to User (Will email them response and resolve ticket)</label>
+                            <textarea
+                              rows="3"
+                              value={replyText[ticket._id] || ''}
+                              onChange={(e) => setReplyText(prev => ({ ...prev, [ticket._id]: e.target.value }))}
+                              className="w-full bg-gray-50 p-4 rounded-2xl outline-none font-bold text-sm h-24 resize-none border border-transparent focus:border-[#FBBF24] transition-all"
+                              placeholder="Type response to send user..."
+                            />
+                            <button
+                              disabled={ticketSubmitting[ticket._id] || !(replyText[ticket._id] || '').trim()}
+                              onClick={() => handleReplyTicket(ticket._id)}
+                              className="bg-[#1A2316] text-[#FBBF24] px-6 py-3.5 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-[#253220] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                            >
+                              {ticketSubmitting[ticket._id] ? 'Sending...' : 'Send Response & Mark Resolved'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>

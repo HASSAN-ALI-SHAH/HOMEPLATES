@@ -95,6 +95,30 @@ router.post('/add-dish', authMiddleware, upload.single('image'), async (req, res
       return res.status(403).json({ message: "Access denied: Chef only!" });
     }
     const { name, category, prepTime, description, price, chefId, chef, pricingDetails } = req.body;
+
+    // Validation checks
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: "Dish name is required" });
+    }
+    if (!category || !category.trim()) {
+      return res.status(400).json({ error: "Category is required" });
+    }
+    if (!prepTime || !prepTime.trim()) {
+      return res.status(400).json({ error: "Preparation time is required" });
+    }
+    if (!description || !description.trim()) {
+      return res.status(400).json({ error: "Description is required" });
+    }
+    if (!price || isNaN(price) || Number(price) <= 0) {
+      return res.status(400).json({ error: "Price must be a valid number greater than 0" });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: "Dish image is required" });
+    }
+    
+    // Fetch chef's city
+    const chefUser = await User.findById(req.user.id);
+    const chefCity = chefUser ? chefUser.city : undefined;
     
     // Parse pricing details
     let parsedPricing = {};
@@ -115,11 +139,12 @@ router.post('/add-dish', authMiddleware, upload.single('image'), async (req, res
       name,
       chef,
       chefId,
+      city: chefCity,
       category,
       price: finalPrice,
       description,
       prepTime,
-      img: req.file ? `/uploads/${req.file.filename}` : '',
+      img: `/uploads/${req.file.filename}`,
       tag: 'New',
       isAvailable: true,
       pricingDetails: {
@@ -150,7 +175,7 @@ router.get('/dish/:dishId', async (req, res) => {
 });
 
 // Update dish details (used by EditDishPage.jsx)
-router.put('/dish/:dishId', authMiddleware, async (req, res) => {
+router.put('/dish/:dishId', authMiddleware, upload.single('image'), async (req, res) => {
   try {
     const { name, price, description, isAvailable, category, prepTime, pricingDetails } = req.body;
     
@@ -162,12 +187,35 @@ router.put('/dish/:dishId', authMiddleware, async (req, res) => {
       return res.status(403).json({ message: "Not authorized to update this dish" });
     }
 
-    if (name) dish.name = name;
-    if (price) dish.price = Number(price);
-    if (description !== undefined) dish.description = description;
-    if (isAvailable !== undefined) dish.isAvailable = isAvailable;
-    if (category) dish.category = category;
-    if (prepTime) dish.prepTime = prepTime;
+    // Backend validations
+    if (name !== undefined) {
+      if (!name.trim()) return res.status(400).json({ error: "Dish name cannot be empty" });
+      dish.name = name;
+    }
+    if (price !== undefined) {
+      if (isNaN(price) || Number(price) <= 0) return res.status(400).json({ error: "Price must be a valid number greater than 0" });
+      dish.price = Number(price);
+    }
+    if (category !== undefined) {
+      if (!category.trim()) return res.status(400).json({ error: "Category cannot be empty" });
+      dish.category = category;
+    }
+    if (prepTime !== undefined) {
+      if (!prepTime.trim()) return res.status(400).json({ error: "Preparation time cannot be empty" });
+      dish.prepTime = prepTime;
+    }
+    if (description !== undefined) {
+      if (!description.trim()) return res.status(400).json({ error: "Description cannot be empty" });
+      dish.description = description;
+    }
+
+    if (req.file) {
+      dish.img = `/uploads/${req.file.filename}`;
+    }
+
+    if (isAvailable !== undefined) {
+      dish.isAvailable = String(isAvailable) === 'true';
+    }
 
     if (pricingDetails) {
       const parsedPricing = typeof pricingDetails === 'string' ? JSON.parse(pricingDetails) : pricingDetails;

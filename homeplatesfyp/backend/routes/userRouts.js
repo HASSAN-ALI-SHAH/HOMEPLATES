@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
+const Menu = require('../models/Menu');
 const bcrypt = require('bcryptjs');
 const authMiddleware = require('../middleware/auth');
 const multer = require('multer');
@@ -62,7 +63,8 @@ router.put('/:id', authMiddleware, upload.single('image'), async (req, res) => {
       name, phone, address, city, img, specialty, experience, vehicle, zone, isActive,
       kitchenName, about,
       weeklyBreakfastPrice, weeklyLunchPrice, weeklyDinnerPrice,
-      monthlyBreakfastPrice, monthlyLunchPrice, monthlyDinnerPrice
+      monthlyBreakfastPrice, monthlyLunchPrice, monthlyDinnerPrice,
+      locationLat, locationLng   // ← chef kitchen coordinates
     } = req.body;
     const updateData = {};
 
@@ -96,11 +98,22 @@ router.put('/:id', authMiddleware, upload.single('image'), async (req, res) => {
     if (vehicle) updateData.vehicle = vehicle;
     if (zone) updateData.zone = zone;
 
+    // Kitchen GPS coordinates (chef sets once, riders/customers see exact pin)
+    if (locationLat !== undefined && locationLng !== undefined) {
+      updateData['location.lat'] = parseFloat(locationLat);
+      updateData['location.lng'] = parseFloat(locationLng);
+    }
+
     const updatedUser = await User.findByIdAndUpdate(
       req.params.id, 
       { $set: updateData }, 
       { new: true }
     ).select('-password');
+
+    // Update all chef's dishes to match new city if city is updated
+    if (updatedUser.role === 'chef' && city) {
+      await Menu.updateMany({ chefId: req.params.id }, { $set: { city } });
+    }
 
     res.json({ message: "Profile updated successfully", user: updatedUser });
   } catch (err) {

@@ -2,6 +2,7 @@ import axios from 'axios';
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Plus, Sparkles, Minus, Utensils, Camera } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from '../utils/toast';
 
 const AddDishPage = () => {
   const navigate = useNavigate();
@@ -28,20 +29,24 @@ const AddDishPage = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!dishInfo.name) { alert('Please enter a dish name'); return; }
-    if (!calcData.sellingPrice || calcData.sellingPrice <= 0) { alert('Please enter a selling price'); return; }
-    if (!currentUser._id) { alert('Not logged in! Please login again.'); navigate('/login'); return; }
+    if (!dishInfo.name || !dishInfo.name.trim()) { toast.error('Please enter a dish name'); return; }
+    if (!dishInfo.category) { toast.error('Please select a category'); return; }
+    if (!dishInfo.prepTime || !dishInfo.prepTime.trim()) { toast.error('Please enter preparation time (e.g. 45 mins)'); return; }
+    if (!dishInfo.description || !dishInfo.description.trim()) { toast.error('Please enter a description for the dish'); return; }
+    if (!dishInfo.image) { toast.error('Please upload an image for the dish'); return; }
+    if (!calcData.sellingPrice || Number(calcData.sellingPrice) <= 0) { toast.error('Please enter a valid selling price greater than 0'); return; }
+    if (!currentUser._id) { toast.error('Not logged in! Please login again.'); navigate('/login'); return; }
 
     setSubmitting(true);
     const formData = new FormData();
-    formData.append('name', dishInfo.name);
+    formData.append('name', dishInfo.name.trim());
     formData.append('category', dishInfo.category);
-    formData.append('prepTime', dishInfo.prepTime);
-    formData.append('description', dishInfo.description);
+    formData.append('prepTime', dishInfo.prepTime.trim());
+    formData.append('description', dishInfo.description.trim());
     formData.append('price', calcData.sellingPrice);
     formData.append('chefId', currentUser._id);
     formData.append('chef', currentUser.name);
-    if (dishInfo.image) formData.append('image', dishInfo.image);
+    formData.append('image', dishInfo.image);
     formData.append('pricingDetails', JSON.stringify({
       rawMaterials: Number(calcData.rawMaterials),
       packaging: Number(calcData.packaging),
@@ -53,11 +58,11 @@ const AddDishPage = () => {
         headers: { 'Content-Type': 'multipart/form-data', Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
       if (response.status === 201) {
-        alert('🎉 Dish added successfully!');
+        toast.success('Dish added successfully!');
         navigate('/chef/dashboard');
       }
     } catch (error) {
-      alert('Error: ' + (error.response?.data?.error || error.response?.data?.message || 'Server connection failed'));
+      toast.error('Error: ' + (error.response?.data?.error || error.response?.data?.message || 'Server connection failed'));
     } finally { setSubmitting(false); }
   };
 

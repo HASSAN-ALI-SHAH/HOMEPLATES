@@ -169,6 +169,7 @@ const OrderTracking = () => {
       }
       else { toast.error('Failed to cancel order.'); }
     } catch (err) {
+      console.error(err);
       toast.error('Error cancelling order');
     } finally {
       setCancellingTrack(false);

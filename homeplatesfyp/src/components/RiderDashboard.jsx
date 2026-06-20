@@ -121,10 +121,18 @@ const RiderDashboard = ({ user: propUser, onLogout, onUserUpdate }) => {
       setNewOrderAlert(prev => prev?._id === orderId ? null : prev);
     });
 
-    // Order status changed (e.g. order cancelled while rider is heading)
-    socket.on('order_status_changed', ({ orderId, status }) => {
+    // Order status changed (e.g. order cancelled while rider is heading, or rider_cancelled penalty)
+    socket.on('order_status_changed', ({ orderId, status, message }) => {
       if (status === 'cancelled') {
         addNotification('⚠️ Order Cancelled', 'The order you accepted was cancelled.');
+        setActiveOrder(null);
+        fetchData();
+      } else if (status === 'rider_cancelled') {
+        // B1: Show penalty deduction notification to the rider
+        if (message) {
+          toast.error(message);
+          addNotification('💸 Wallet Penalty Applied', message);
+        }
         setActiveOrder(null);
         fetchData();
       }
@@ -449,12 +457,23 @@ const RiderDashboard = ({ user: propUser, onLogout, onUserUpdate }) => {
         </div>
       )}
 
-      {/* B7: Cancel Delivery Modal */}
+      {/* B7/B1: Cancel Delivery Modal */}
       {cancelModal && (
         <div className="fixed inset-0 z-[9998] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-[35px] p-8 max-w-sm w-full shadow-2xl">
-            <h3 className="font-black text-lg uppercase italic mb-2">Cancel Delivery?</h3>
+            <h3 className="font-black text-lg uppercase italic mb-2 text-red-600">Cancel Delivery?</h3>
             <p className="text-xs text-gray-500 font-bold mb-4">The chef and customer will be notified. Please provide a reason.</p>
+
+            {/* B1: Penalty warning when already picked up */}
+            {activeOrder && ['picked-up', 'out-for-delivery'].includes(activeOrder.status) && (
+              <div className="mb-4 bg-red-50 border-2 border-red-200 rounded-2xl p-4">
+                <p className="text-red-700 font-black text-[10px] uppercase tracking-widest mb-1">⚠️ Penalty Warning</p>
+                <p className="text-xs text-red-600 font-bold">
+                  You have already picked up this order. Cancelling now will result in a financial penalty deducted from your wallet equal to the order amount (PKR {activeOrder.items?.reduce((s, i) => s + i.price * i.quantity, 0)?.toLocaleString() || '0'}).
+                </p>
+              </div>
+            )}
+
             <textarea
               value={actionReason}
               onChange={e => setActionReason(e.target.value)}

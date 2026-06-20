@@ -85,15 +85,17 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
       socket.emit('join_user_room', user._id);
       socket.on('connect', () => socket.emit('join_user_room', user._id));
 
-      // B4: Payment approved — refresh subscriptions immediately
+      // B4: Payment approved — refresh subscriptions immediately and switch to subscriptions tab
       socket.on('payment_approved', ({ message }) => {
         toast.success(message || '✅ Payment approved! Your subscription is now active.');
         fetchData();
+        setActiveTab('subscriptions'); // Auto-switch to subscriptions tab to show updated status
       });
-      // B3: Payment rejected — refresh subscriptions to show red banner
+      // B3: Payment rejected — refresh subscriptions to show red banner and switch to subscriptions tab
       socket.on('payment_rejected', ({ message }) => {
         toast.error(message || '❌ Payment rejected. Please re-upload your proof.');
         fetchData();
+        setActiveTab('subscriptions'); // Auto-switch to show rejection banner
       });
 
       return () => socket.disconnect();
@@ -622,6 +624,46 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
                   ) : (
                     subscriptions.map(sub => (
                         <div key={sub._id} className="bg-gray-50 p-7 rounded-[28px]">
+
+                          {/* B3: Payment Approved Banner */}
+                          {sub.paymentStatus === 'approved' && sub.status === 'active' && (
+                            <div className="mb-5 bg-green-50 border-2 border-green-300 rounded-2xl p-4 flex items-start gap-3">
+                              <CheckCircle size={18} className="text-green-500 flex-shrink-0 mt-0.5" />
+                              <div>
+                                <p className="text-green-700 font-black text-[10px] uppercase tracking-widest mb-1">
+                                  ✅ Payment Approved — Subscription Active
+                                </p>
+                                <p className="text-xs text-green-600 font-bold">
+                                  Your payment has been verified by admin. Your {sub.planType} meal plan is now active. Meals will be delivered on your selected days.
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* B3: Payment Pending Banner */}
+                          {sub.paymentStatus === 'pending' && (
+                            <div className="mb-5 bg-yellow-50 border-2 border-yellow-300 rounded-2xl p-4 flex items-start gap-3">
+                              <Clock size={18} className="text-yellow-500 flex-shrink-0 mt-0.5" />
+                              <div>
+                                <p className="text-yellow-700 font-black text-[10px] uppercase tracking-widest mb-1">
+                                  ⏳ Payment Under Review
+                                </p>
+                                <p className="text-xs text-yellow-600 font-bold">
+                                  Your payment screenshot has been submitted and is awaiting admin verification. You'll be notified once approved.
+                                </p>
+                                {sub.paymentScreenshot && (
+                                  <a
+                                    href={`http://localhost:5000${sub.paymentScreenshot}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="mt-2 inline-flex items-center gap-1 text-[9px] font-black uppercase text-yellow-700 underline hover:text-yellow-800"
+                                  >
+                                    📎 View Submitted Screenshot →
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          )}
 
                           {/* B3: Payment Rejected Banner */}
                           {(sub.paymentStatus === 'rejected' || sub.status === 'payment_failed') && (

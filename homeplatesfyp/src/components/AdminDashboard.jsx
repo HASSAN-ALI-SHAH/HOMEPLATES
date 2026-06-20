@@ -237,7 +237,9 @@ const AdminDashboard = () => {
   };
 
   const handleLogout = () => {
-    localStorage.clear();
+    // Only clear auth credentials — do not clear other data like cart
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     navigate('/admin-entry');
   };
 

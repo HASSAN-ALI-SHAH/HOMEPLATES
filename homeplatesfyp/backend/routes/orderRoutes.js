@@ -381,28 +381,61 @@ module.exports = (io) => {
 
       // ─── RIDER CANCELLED ─────────────────────────────────────────────────────
       // B12: distinct rider_cancelled status + notify chef
+      // B1: Deduct penalty from rider wallet if they cancelled after picking up
       } else if (status === 'rider_cancelled') {
         const prevRider = order.rider;
+        const cancelledAfterPickup = ['picked-up', 'out-for-delivery'].includes(oldStatus);
+
         order.rider = null;
+        order.status = 'rider_cancelled';
+        // Reset order back to ready-for-pickup so chef can re-assign
         order.status = 'rider_cancelled';
         await order.save();
 
-        // B12: Notify chef immediately
+        // B1: Apply financial penalty if rider cancelled after picking up the food
+        let penaltyAmount = 0;
+        if (cancelledAfterPickup && prevRider) {
+          penaltyAmount = subtotal; // Full order amount deducted as penalty
+          const riderBeforePenalty = await User.findById(prevRider);
+          const currentWallet = riderBeforePenalty?.wallet || 0;
+          // Deduct from wallet (allow going to 0 minimum — no negative balance)
+          const actualDeduction = Math.min(penaltyAmount, currentWallet);
+          await User.findByIdAndUpdate(prevRider, { $inc: { wallet: -actualDeduction } });
+          await WalletTransaction.create({
+            chefId: prevRider,
+            type: 'debit',
+            amount: actualDeduction,
+            orderId: order._id,
+            status: 'approved',
+            accountDetails: `Penalty: Order #${order._id.toString().slice(-6)} cancelled after pickup`
+          });
+          // Notify rider about deduction
+          safeEmit(`rider_${prevRider}`, 'order_status_changed', {
+            orderId: order._id,
+            status: 'rider_cancelled',
+            message: `⚠️ PKR ${actualDeduction.toLocaleString()} has been deducted from your wallet as a penalty for cancelling Order #${order._id.toString().slice(-6)} after picking up the food.`
+          });
+        }
+
+        // B12: Notify chef immediately with re-assign instructions
         const riderUser = prevRider ? await User.findById(prevRider).select('name') : null;
+        const penaltyMsg = cancelledAfterPickup && penaltyAmount > 0
+          ? ` A penalty of PKR ${penaltyAmount.toLocaleString()} has been applied to the rider.`
+          : '';
         safeEmit(`chef_${order.chef}`, 'new_order_notification', {
           orderId: order._id, status: 'rider_cancelled',
-          message: `⚠️ Rider${riderUser ? (' ' + riderUser.name) : ''} cancelled order #${order._id.toString().slice(-6)}. Please re-assign a rider.`
+          message: `⚠️ Rider${riderUser ? (' ' + riderUser.name) : ''} cancelled Order #${order._id.toString().slice(-6)} after pickup.${penaltyMsg} Please re-assign a new rider.`
         });
         // Notify customer
         safeEmit(`order_${order._id}`, 'order_status_changed', {
           orderId: order._id, status: 'rider_cancelled',
-          message: 'The rider cancelled. Your order is being re-assigned.'
+          message: 'The rider cancelled your delivery. The chef is assigning a new rider — your order is safe.'
         });
         safeEmit(`user_${order.user}`, 'order_notification', {
           type: 'rider_cancelled', orderId: order._id,
-          message: 'Your rider cancelled. We are finding a new rider for you.'
+          message: '🔄 Your rider cancelled. We are finding a new rider. Your order is being re-assigned — please wait.'
         });
-        return res.json({ message: 'Order marked as rider_cancelled, chef notified.', order });
+        return res.json({ message: 'Order marked as rider_cancelled, chef notified, penalty applied.', order, penaltyAmount });
 
       // ─── CANCELLED / FAILED (legacy) ─────────────────────────────────────────
       } else if (status === 'cancelled') {
@@ -747,6 +780,57 @@ module.exports = (io) => {
       });
 
       res.json({ message: 'Order re-broadcast to available riders.' });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ----------------------------------------------------
+  // 14. Reassign order after rider cancellation (Chef action)
+  // B1: Chef re-opens the order to available riders after a rider_cancelled event
+  // ----------------------------------------------------
+  router.patch('/:orderId/reassign-after-cancel', authMiddleware, async (req, res) => {
+    try {
+      const order = await Order.findById(req.params.orderId)
+        .populate('chef', 'name city');
+
+      if (!order) return res.status(404).json({ message: 'Order not found' });
+      if (order.status !== 'rider_cancelled') {
+        return res.status(400).json({ message: 'Order must be in rider_cancelled state to reassign.' });
+      }
+
+      // Reset to ready-for-pickup so riders can see it again
+      order.status = 'ready-for-pickup';
+      order.rider = null;
+      order.ignoredBy = []; // Clear ignore list so all riders see it fresh
+      order.statusHistory.push({ status: 'reassigning', updatedBy: req.user.id });
+      await order.save();
+
+      const populatedOrder = await Order.findById(order._id)
+        .populate('user', 'name phone address')
+        .populate('chef', 'name phone address specialty kitchenName about img city')
+        .populate('items.dishId', 'name img price');
+
+      // Notify customer that a new rider is being found
+      safeEmit(`order_${order._id}`, 'order_status_changed', {
+        orderId: order._id, status: 'ready-for-pickup',
+        message: '🔄 Chef is finding a new rider for your order.'
+      });
+      safeEmit(`user_${order.user}`, 'order_notification', {
+        type: 'status_update', orderId: order._id, status: 'ready-for-pickup',
+        message: '🔄 Your order has been reassigned. A new rider will be assigned shortly.'
+      });
+
+      // Re-broadcast to all available riders in the chef's city
+      const chefCity = populatedOrder.chef?.city;
+      if (chefCity) {
+        safeEmit(`riders_${chefCity.toLowerCase()}`, 'new_delivery_available', {
+          order: populatedOrder,
+          message: '🍽️ A previously cancelled delivery has been re-opened. Accept now!'
+        });
+      }
+
+      res.json({ message: 'Order reassigned to available riders.', order: populatedOrder });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }

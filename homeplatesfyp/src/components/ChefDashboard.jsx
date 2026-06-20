@@ -704,26 +704,35 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
                     </div>
                   )}
 
-                  {/* B12: Rider Cancelled — Action Required */}
+                  {/* B12/B1: Rider Cancelled — Action Required */}
                   {o.status === 'rider_cancelled' && (
                     <div className="bg-orange-50 border-2 border-orange-300 rounded-2xl p-4 space-y-3">
-                      <p className="text-orange-700 font-black text-[10px] uppercase tracking-widest">⚠️ Rider Cancelled — Re-assign Needed</p>
-                      <p className="text-xs text-orange-600 font-bold">The assigned rider cancelled this order. Re-assign to a new rider or cancel.</p>
+                      <p className="text-orange-700 font-black text-[10px] uppercase tracking-widest">⚠️ Rider Cancelled After Pickup — Re-assign Needed</p>
+                      <p className="text-xs text-orange-600 font-bold">The assigned rider cancelled this order. A penalty has been applied to the rider. Please re-assign to a new available rider or cancel the order.</p>
                       <div className="flex gap-2">
                         <button
                           onClick={async () => {
                             try {
-                              await updateStatus(o._id, 'ready-for-pickup');
-                              toast.success('Order re-broadcast to available riders!');
-                              fetchAll();
-                            } catch (e) { toast.error('Error re-broadcasting'); }
+                              const token = localStorage.getItem('token');
+                              const res = await fetch(`http://localhost:5000/api/orders/${o._id}/reassign-after-cancel`, {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+                              });
+                              if (res.ok) {
+                                toast.success('✅ Order re-broadcast! Available riders have been notified.');
+                                fetchAll();
+                              } else {
+                                const err = await res.json();
+                                toast.error(err.message || 'Re-broadcast failed');
+                              }
+                            } catch (e) { toast.error('Error re-assigning order'); }
                           }}
                           className="flex-1 py-2.5 bg-[#FBBF24] text-[#1A2316] rounded-xl font-black text-[9px] uppercase hover:opacity-90 transition-all"
                         >
                           🔄 Find New Rider
                         </button>
                         <button
-                          onClick={() => updateStatus(o._id, 'cancelled', 'Cancelled after rider refused.')}
+                          onClick={() => updateStatus(o._id, 'cancelled', 'Cancelled after rider refused to deliver.')}
                           className="flex-1 py-2.5 bg-red-100 text-red-700 rounded-xl font-black text-[9px] uppercase hover:bg-red-200 transition-all"
                         >
                           ✕ Cancel Order

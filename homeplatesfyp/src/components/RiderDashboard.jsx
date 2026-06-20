@@ -813,6 +813,16 @@ const RiderDashboard = ({ user: propUser, onLogout, onUserUpdate }) => {
                           <Phone size={10} /> {activeOrder.chef.phone}
                         </a>
                       )}
+                      {chefCoords && (
+                        <a
+                          href={`https://www.google.com/maps/dir/?api=1&destination=${chefCoords.lat},${chefCoords.lng}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[#FBBF24] text-[10px] font-black mt-2 flex items-center gap-1 hover:underline"
+                        >
+                          🗺️ Navigate to Kitchen
+                        </a>
+                      )}
                     </div>
 
                     {/* Dropoff */}
@@ -825,6 +835,16 @@ const RiderDashboard = ({ user: propUser, onLogout, onUserUpdate }) => {
                         </a>
                       )}
                       <p className="text-gray-500 text-xs mt-1 leading-relaxed">{activeOrder.deliveryAddress}</p>
+                      {customerCoords && (
+                        <a
+                          href={`https://www.google.com/maps/dir/?api=1&destination=${customerCoords.lat},${customerCoords.lng}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-green-600 text-[10px] font-black mt-2 flex items-center gap-1 hover:underline"
+                        >
+                          🗺️ Navigate to Customer
+                        </a>
+                      )}
                     </div>
                   </div>
 
@@ -867,9 +887,21 @@ const RiderDashboard = ({ user: propUser, onLogout, onUserUpdate }) => {
                           <p className="text-[10px] text-orange-500 font-black uppercase">⏳ Acquiring GPS signal...</p>
                         )}
                       </div>
-                      {geoError && (
-                        <span className="text-red-500 text-[9px] font-black uppercase bg-red-50 px-3 py-1.5 rounded-xl border border-red-100">GPS Off</span>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {(chefCoords || customerCoords) && (
+                          <a
+                            href={`https://www.google.com/maps/dir/?api=1&origin=${riderCoords ? `${riderCoords.lat},${riderCoords.lng}` : ''}&destination=${customerCoords ? `${customerCoords.lat},${customerCoords.lng}` : `${chefCoords?.lat},${chefCoords?.lng}`}&waypoints=${(chefCoords && customerCoords) ? `${chefCoords.lat},${chefCoords.lng}` : ''}&travelmode=driving`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="bg-[#FBBF24] hover:bg-[#FBBF24]/90 text-[#1A2316] text-[10px] font-black uppercase tracking-wider px-4 py-2 rounded-xl border border-[#FBBF24] transition-all flex items-center gap-1.5 shadow-sm"
+                          >
+                            🗺️ Navigate in Google Maps
+                          </a>
+                        )}
+                        {geoError && (
+                          <span className="text-red-500 text-[9px] font-black uppercase bg-red-50 px-3 py-1.5 rounded-xl border border-red-100">GPS Off</span>
+                        )}
+                      </div>
                     </div>
 
                     <LiveTrackingMap

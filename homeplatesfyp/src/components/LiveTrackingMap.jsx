@@ -219,7 +219,7 @@ const LiveTrackingMap = ({
         style={{
           position: 'absolute',
           top: 12,
-          left: 12,
+          right: 12,
           zIndex: 1000,
           background: 'rgba(26,35,22,0.88)',
           backdropFilter: 'blur(8px)',

@@ -36,47 +36,53 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
   const [helpMessage, setHelpMessage] = useState('');
   const [sendingHelp, setSendingHelp] = useState(false);
 
+  // States for re-uploading payment screenshot
+  const [reuploadingSubId, setReuploadingSubId] = useState(null);
+  const [reuploadFile, setReuploadFile] = useState(null);
+  const [reuploading, setReuploading] = useState(false);
+
   // -------------------------------------------------------
   // FETCH ALL DATA ON MOUNT
   // -------------------------------------------------------
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!user?._id) return;
-      setIsLoading(true);
-      try {
-        const [userRes, ordersRes, subsRes] = await Promise.allSettled([
-          fetch(`http://localhost:5000/api/user/profile/${user._id}`),
-          fetch(`http://localhost:5000/api/orders/my-orders/${user._id}`, {
-            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-          }),
-          fetch(`http://localhost:5000/api/subscriptions/${user._id}`)
-        ]);
+  const fetchData = useCallback(async () => {
+    if (!user?._id) return;
+    setIsLoading(true);
+    try {
+      const [userRes, ordersRes, subsRes] = await Promise.allSettled([
+        fetch(`http://localhost:5000/api/user/profile/${user._id}`),
+        fetch(`http://localhost:5000/api/orders/my-orders/${user._id}`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        }),
+        fetch(`http://localhost:5000/api/subscriptions/${user._id}`)
+      ]);
 
-        if (userRes.status === 'fulfilled' && userRes.value.ok) {
-          const u = await userRes.value.json();
-          setProfileData({
-            name: u.name || '',
-            phone: u.phone || '',
-            email: u.email || '',
-            address: u.address || ''
-          });
-        }
-
-        if (ordersRes.status === 'fulfilled' && ordersRes.value.ok) {
-          const o = await ordersRes.value.json();
-          setOrders(Array.isArray(o) ? o : []);
-        }
-
-        if (subsRes.status === 'fulfilled' && subsRes.value.ok) {
-          const s = await subsRes.value.json();
-          setSubscriptions(Array.isArray(s) ? s : []);
-        }
-      } catch (err) {
-        console.error('UserProfile fetch error:', err);
-      } finally {
-        setIsLoading(false);
+      if (userRes.status === 'fulfilled' && userRes.value.ok) {
+        const u = await userRes.value.json();
+        setProfileData({
+          name: u.name || '',
+          phone: u.phone || '',
+          email: u.email || '',
+          address: u.address || ''
+        });
       }
-    };
+
+      if (ordersRes.status === 'fulfilled' && ordersRes.value.ok) {
+        const o = await ordersRes.value.json();
+        setOrders(Array.isArray(o) ? o : []);
+      }
+
+      if (subsRes.status === 'fulfilled' && subsRes.value.ok) {
+        const s = await subsRes.value.json();
+        setSubscriptions(Array.isArray(s) ? s : []);
+      }
+    } catch (err) {
+      console.error('UserProfile fetch error:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user?._id]);
+
+  useEffect(() => {
     fetchData();
 
     // B4: Connect to socket and listen for payment events
@@ -100,7 +106,7 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
 
       return () => socket.disconnect();
     }
-  }, [user]);
+  }, [user, fetchData]);
 
   // B16: Cancel order handler
   const handleCancelOrder = async () => {
@@ -214,6 +220,37 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
     } catch (err) {
       console.error(err);
       toast.error("Connection error.");
+    }
+  };
+
+  const handleReuploadSubmit = async (e, subId) => {
+    e.preventDefault();
+    if (!reuploadFile) {
+      toast.error('Please select a payment screenshot!');
+      return;
+    }
+    setReuploading(true);
+    const formData = new FormData();
+    formData.append('screenshot', reuploadFile);
+
+    try {
+      const res = await fetch(`http://localhost:5000/api/subscriptions/${subId}/reupload-payment`, {
+        method: 'PATCH',
+        body: formData
+      });
+      if (res.ok) {
+        toast.success("Payment screenshot re-uploaded successfully! Awaiting verification.");
+        setReuploadingSubId(null);
+        setReuploadFile(null);
+        fetchData();
+      } else {
+        const err = await res.json();
+        toast.error(err.message || "Re-upload failed.");
+      }
+    } catch (err) {
+      toast.error("Network error. Please try again.");
+    } finally {
+      setReuploading(false);
     }
   };
 
@@ -676,12 +713,39 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
                                 <p className="text-xs text-red-600 font-bold">
                                   Your payment proof was rejected by the admin. Please re-upload a clear and valid payment screenshot to activate your subscription.
                                 </p>
-                                <button
-                                  onClick={() => setActiveTab('subscriptions')}
-                                  className="mt-2 text-[9px] font-black uppercase text-red-700 underline"
-                                >
-                                  Re-upload Payment Proof →
-                                </button>
+                                {reuploadingSubId === sub._id ? (
+                                  <form onSubmit={(e) => handleReuploadSubmit(e, sub._id)} className="mt-3 space-y-2 text-left">
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      onChange={(e) => setReuploadFile(e.target.files[0])}
+                                      className="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-[10px] file:font-black file:uppercase file:bg-red-50 file:text-red-700 hover:file:bg-red-100 transition-all cursor-pointer"
+                                    />
+                                    <div className="flex gap-2">
+                                      <button
+                                        type="submit"
+                                        disabled={reuploading || !reuploadFile}
+                                        className="bg-red-600 text-white text-[9px] font-black uppercase px-4 py-2 rounded-xl disabled:opacity-50 hover:bg-red-700 transition-all"
+                                      >
+                                        {reuploading ? 'Uploading...' : 'Submit Screenshot'}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => { setReuploadingSubId(null); setReuploadFile(null); }}
+                                        className="bg-gray-100 text-[#1A2316] text-[9px] font-black uppercase px-4 py-2 rounded-xl hover:bg-gray-200 transition-all"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </form>
+                                ) : (
+                                  <button
+                                    onClick={() => setReuploadingSubId(sub._id)}
+                                    className="mt-2 text-[9px] font-black uppercase text-red-700 underline hover:text-red-800 transition-all"
+                                  >
+                                    Re-upload Payment Proof →
+                                  </button>
+                                )}
                               </div>
                             </div>
                           )}

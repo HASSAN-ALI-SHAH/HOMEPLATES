@@ -264,8 +264,17 @@ module.exports = (io) => {
       }
 
       order.status = status;
-      if (cancellationReason) order.cancellationReason = cancellationReason;
-      if (failureReason) order.failureReason = failureReason;
+      if (cancellationReason) {
+        order.cancellationReason = cancellationReason;
+      } else if (['preparing', 'ready-for-pickup', 'picked-up', 'out-for-delivery', 'delivered'].includes(status)) {
+        order.cancellationReason = undefined;
+      }
+
+      if (failureReason) {
+        order.failureReason = failureReason;
+      } else if (['preparing', 'ready-for-pickup', 'picked-up', 'out-for-delivery', 'delivered'].includes(status)) {
+        order.failureReason = undefined;
+      }
       if (riderId) order.rider = riderId;
 
       const updaterId = req.user?.id || riderId || order.chef;
@@ -556,6 +565,8 @@ module.exports = (io) => {
 
       order.rider = finalRiderId;
       order.status = 'ready-for-pickup';
+      order.cancellationReason = undefined;
+      order.failureReason = undefined;
       order.statusHistory.push({ status: 'rider_accepted', updatedBy: finalRiderId });
       await order.save();
 
@@ -688,6 +699,8 @@ module.exports = (io) => {
       if (action === 'reassign') {
         order.status = 'ready-for-pickup';
         order.rider = null;
+        order.cancellationReason = undefined;
+        order.failureReason = undefined;
         order.statusHistory.push({ status: 'reassigning', updatedBy: req.user.id });
         await order.save();
 
@@ -803,6 +816,8 @@ module.exports = (io) => {
       order.status = 'ready-for-pickup';
       order.rider = null;
       order.ignoredBy = []; // Clear ignore list so all riders see it fresh
+      order.cancellationReason = undefined;
+      order.failureReason = undefined;
       order.statusHistory.push({ status: 'reassigning', updatedBy: req.user.id });
       await order.save();
 

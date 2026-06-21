@@ -130,16 +130,12 @@ const OrderTracking = () => {
     socket.emit('track_order', orderId);
     socket.on('connect', () => { socket.emit('track_order', orderId); });
 
-    socket.on('order_status_changed', ({ orderId: id, status, cancellationReason, riderId }) => {
-      setOrder(prev => {
-        if (!prev) return prev;
-        const updatedRider = riderId ? { ...prev.rider, _id: riderId } : prev.rider;
-        return { ...prev, status, cancellationReason, rider: updatedRider };
-      });
+    socket.on('order_status_changed', () => {
+      fetchOrder();
     });
 
-    socket.on('order_cancelled_by_chef', ({ reason }) => {
-      setOrder(prev => prev ? { ...prev, status: 'cancelled', cancellationReason: reason } : prev);
+    socket.on('order_cancelled_by_chef', () => {
+      fetchOrder();
     });
 
     // Live rider location update

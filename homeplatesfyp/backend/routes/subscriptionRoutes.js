@@ -354,21 +354,30 @@ router.patch('/:id/verify-payment', authMiddleware, adminOnly, async (req, res) 
 
     const io = socketHelper.getIo();
 
+    // Extract socket room IDs safely before potentially modifying or saving the populated document
+    const userIdStr = sub.userId && sub.userId._id ? sub.userId._id.toString() : (sub.userId ? sub.userId.toString() : '');
+    const chefIdStr = sub.chefId && sub.chefId._id ? sub.chefId._id.toString() : (sub.chefId ? sub.chefId.toString() : '');
+    const userName = sub.userId && sub.userId.name ? sub.userId.name : 'A customer';
+
     if (action === 'approve') {
       sub.paymentStatus = 'approved';
       sub.status = 'active';
       await sub.save();
 
       // B4: Notify user in real-time — subscription is now active
-      io.to(`user_${sub.userId._id}`).emit('payment_approved', {
-        subscriptionId: sub._id,
-        message: `✅ Your payment for the ${sub.planType} meal plan has been approved! Your subscription is now active.`
-      });
+      if (userIdStr) {
+        io.to(`user_${userIdStr}`).emit('payment_approved', {
+          subscriptionId: sub._id,
+          message: `✅ Your payment for the ${sub.planType} meal plan has been approved! Your subscription is now active.`
+        });
+      }
       // B4: Notify chef of new confirmed subscriber
-      io.to(`chef_${sub.chefId._id}`).emit('new_order_notification', {
-        status: 'subscription_approved',
-        message: `💰 New subscriber confirmed! ${sub.userId.name} has an active ${sub.planType} plan with you.`
-      });
+      if (chefIdStr) {
+        io.to(`chef_${chefIdStr}`).emit('new_order_notification', {
+          status: 'subscription_approved',
+          message: `💰 New subscriber confirmed! ${userName} has an active ${sub.planType} plan with you.`
+        });
+      }
 
     } else if (action === 'reject') {
       sub.paymentStatus = 'rejected';
@@ -376,17 +385,19 @@ router.patch('/:id/verify-payment', authMiddleware, adminOnly, async (req, res) 
       await sub.save();
 
       // B3: Notify user in real-time
-      io.to(`user_${sub.userId._id}`).emit('payment_rejected', {
-        subscriptionId: sub._id,
-        message: '❌ Your subscription payment was rejected. Please re-upload a valid payment screenshot from your profile.'
-      });
+      if (userIdStr) {
+        io.to(`user_${userIdStr}`).emit('payment_rejected', {
+          subscriptionId: sub._id,
+          message: '❌ Your subscription payment was rejected. Please re-upload a valid payment screenshot from your profile.'
+        });
+      }
 
       // B3: Send rejection email to user
-      if (sub.userId.email) {
+      if (sub.userId && sub.userId.email) {
         const emailHtml = `
           <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 5px;">
             <h2 style="color: #e53e3e;">Subscription Payment Declined</h2>
-            <p>Hello ${sub.userId.name},</p>
+            <p>Hello ${userName},</p>
             <p>Your payment proof for the <strong>${sub.planType}</strong> meal plan subscription has been reviewed and <strong>rejected</strong>.</p>
             <p>This may be due to an unclear screenshot, incorrect amount, or unverifiable details.</p>
             <p>Please log in to your HomePlates profile and re-upload a valid payment proof to re-activate your subscription.</p>
@@ -405,6 +416,38 @@ router.patch('/:id/verify-payment', authMiddleware, adminOnly, async (req, res) 
     res.status(500).json({ error: err.message });
   }
 });
+
+// Re-upload payment screenshot for a rejected subscription
+router.patch('/:id/reupload-payment', upload.single('screenshot'), async (req, res) => {
+  try {
+    const sub = await Subscription.findById(req.params.id);
+    if (!sub) return res.status(404).json({ message: "Subscription not found" });
+
+    if (!req.file) {
+      return res.status(400).json({ message: "Please upload a screenshot" });
+    }
+
+    sub.paymentScreenshot = `/uploads/${req.file.filename}`;
+    sub.paymentStatus = 'pending';
+    sub.status = 'pending';
+    await sub.save();
+
+    // Emit notification to admin
+    try {
+      const io = socketHelper.getIo();
+      io.to('admin_room').emit('new_subscription', {
+        message: `A payment screenshot has been re-uploaded for a rejected subscription! Awaiting payment approval.`
+      });
+    } catch (socketErr) {
+      console.error("Socket emit failed on subscription re-upload:", socketErr);
+    }
+
+    res.status(200).json({ message: "Screenshot re-uploaded successfully! Awaiting admin verification.", subscription: sub });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // 13. Admin approves chef payout for expired subscription
 router.patch('/:id/approve-payout', authMiddleware, adminOnly, async (req, res) => {

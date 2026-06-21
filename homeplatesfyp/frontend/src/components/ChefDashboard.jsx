@@ -1378,13 +1378,13 @@ const RecipesTab = ({ chefId, token }) => {
   const handleDeleteRecipe = async (recipeId) => {
     if (!window.confirm('Are you sure you want to delete this recipe?')) return;
     try {
-      await API.delete(`/api/chef/recipes/${recipeId}`, {
+      const res = await API.delete(`/api/chef/recipes/${recipeId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      toast.success('Recipe deleted successfully!');
+      toast.success(res.data?.message || 'Recipe deleted successfully!');
       fetchRecipes();
     } catch (err) {
-      toast.error('Failed to delete recipe');
+      toast.error(err.response?.data?.message || 'Failed to delete recipe');
     }
   };
 

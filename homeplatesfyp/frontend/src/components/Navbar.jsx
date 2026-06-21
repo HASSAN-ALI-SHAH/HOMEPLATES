@@ -93,7 +93,7 @@ const Navbar = ({ cartCount, currentUser, onLogout }) => {
                   src={
                     (currentUser.img || currentUser.avatar).startsWith('http') 
                       ? (currentUser.img || currentUser.avatar) 
-                      : `http://localhost:5000${currentUser.img || currentUser.avatar}`
+                      : `${window.API_URL}${currentUser.img || currentUser.avatar}`
                   } 
                   className="w-full h-full object-cover" 
                   alt="Profile" 
@@ -117,7 +117,7 @@ const Navbar = ({ cartCount, currentUser, onLogout }) => {
                   <div className="px-5 py-4 border-b border-gray-50 mb-2 flex items-center gap-3">
                     {(currentUser.img || currentUser.avatar) ? (
                       <img
-                        src={(currentUser.img || currentUser.avatar).startsWith('http') ? (currentUser.img || currentUser.avatar) : `http://localhost:5000${currentUser.img || currentUser.avatar}`}
+                        src={(currentUser.img || currentUser.avatar).startsWith('http') ? (currentUser.img || currentUser.avatar) : `${window.API_URL}${currentUser.img || currentUser.avatar}`}
                         className="w-10 h-10 rounded-xl object-cover border-2 border-[#FBBF24] flex-shrink-0"
                         alt="Profile"
                       />

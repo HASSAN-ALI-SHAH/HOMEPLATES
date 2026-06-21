@@ -13,7 +13,7 @@ const AllChefs = () => {
   const getImageUrl = (url) => {
     if (!url) return 'https://images.pexels.com/photos/1640774/pexels-photo-1640774.jpeg';
     if (url.startsWith('http') || url.startsWith('data:')) return url;
-    return `http://localhost:5000${url}`;
+    return `${window.API_URL}${url}`;
   };
 
   // Backend se chefs fetch karne ka logic

@@ -95,7 +95,7 @@ const RiderDashboard = ({ user: propUser, onLogout, onUserUpdate }) => {
 
     fetchData();
 
-    const socket = io('http://localhost:5000', { transports: ['websocket', 'polling'] });
+    const socket = io(window.API_URL, { transports: ['websocket', 'polling'] });
     socketRef.current = socket;
 
     // Join room immediately (buffered until connection is ready)
@@ -547,7 +547,7 @@ const RiderDashboard = ({ user: propUser, onLogout, onUserUpdate }) => {
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 bg-[#FBBF24]/20 rounded-2xl flex items-center justify-center flex-shrink-0 overflow-hidden">
                   {newOrderAlert.chef?.img ? (
-                    <img src={`http://localhost:5000${newOrderAlert.chef.img}`} className="w-full h-full object-cover" alt="" />
+                    <img src={`${window.API_URL}${newOrderAlert.chef.img}`} className="w-full h-full object-cover" alt="" />
                   ) : (
                     <ChefHat size={22} className="text-[#FBBF24]" />
                   )}
@@ -866,7 +866,7 @@ const RiderDashboard = ({ user: propUser, onLogout, onUserUpdate }) => {
                   <div className="flex items-center gap-4">
                     <div className="w-12 h-12 bg-[#FBBF24]/10 rounded-2xl flex items-center justify-center overflow-hidden">
                       {order.chef?.img ? (
-                        <img src={`http://localhost:5000${order.chef.img}`} className="w-full h-full object-cover" alt="" />
+                        <img src={`${window.API_URL}${order.chef.img}`} className="w-full h-full object-cover" alt="" />
                       ) : (
                         <ChefHat size={22} className="text-[#FBBF24]" />
                       )}
@@ -959,7 +959,7 @@ const RiderDashboard = ({ user: propUser, onLogout, onUserUpdate }) => {
                       <div className="flex items-center gap-3 mb-2">
                         {activeOrder.chef?.img && (
                           <div className="w-8 h-8 rounded-lg overflow-hidden border border-white/20">
-                            <img src={`http://localhost:5000${activeOrder.chef.img}`} className="w-full h-full object-cover" alt="" />
+                            <img src={`${window.API_URL}${activeOrder.chef.img}`} className="w-full h-full object-cover" alt="" />
                           </div>
                         )}
                         <p className="text-white font-black">{activeOrder.chef?.kitchenName || activeOrder.chef?.name}</p>

@@ -59,7 +59,7 @@ const ChefProfile = ({ handleAddToCart }) => {
       if (!id) return;
       setLoadingPlans(true);
       try {
-        const res = await fetch(`http://localhost:5000/api/subscriptions/plans/chef/${id}`);
+        const res = await fetch(`${window.API_URL}/api/subscriptions/plans/chef/${id}`);
         if (res.ok) {
           const data = await res.json();
           setPlans(data || []);
@@ -121,8 +121,8 @@ const ChefProfile = ({ handleAddToCart }) => {
     }
 
     const endpoint = paymentDetails.isPlan 
-      ? 'http://localhost:5000/api/subscriptions/subscribe-plan'
-      : 'http://localhost:5000/api/subscriptions/add';
+      ? window.API_URL + '/api/subscriptions/subscribe-plan'
+      : window.API_URL + '/api/subscriptions/add';
 
     try {
       const res = await fetch(endpoint, {
@@ -158,9 +158,9 @@ const ChefProfile = ({ handleAddToCart }) => {
       setDataLoading(true);
       try {
         const [chefRes, reviewRes, recipeRes] = await Promise.allSettled([
-          fetch(`http://localhost:5000/api/chef/${id}/profile`),
-          fetch(`http://localhost:5000/api/reviews/chef/${id}`),
-          fetch(`http://localhost:5000/api/chef/recipes/chef/${id}`)
+          fetch(`${window.API_URL}/api/chef/${id}/profile`),
+          fetch(`${window.API_URL}/api/reviews/chef/${id}`),
+          fetch(`${window.API_URL}/api/chef/recipes/chef/${id}`)
         ]);
 
         if (chefRes.status === 'fulfilled' && chefRes.value.ok) {
@@ -193,7 +193,7 @@ const ChefProfile = ({ handleAddToCart }) => {
   const getImageUrl = (url) => {
     if (!url) return 'https://images.pexels.com/photos/1640774/pexels-photo-1640774.jpeg';
     if (url.startsWith('http') || url.startsWith('data:')) return url;
-    return `http://localhost:5000${url}`;
+    return `${window.API_URL}${url}`;
   };
 
   // --- Add to Cart ---
@@ -229,7 +229,7 @@ const ChefProfile = ({ handleAddToCart }) => {
     }
     setSubmittingReview(true);
     try {
-      const res = await fetch('http://localhost:5000/api/reviews', {
+      const res = await fetch(window.API_URL + '/api/reviews', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

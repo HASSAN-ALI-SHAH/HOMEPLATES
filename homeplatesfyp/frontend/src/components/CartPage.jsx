@@ -50,7 +50,7 @@ const CartPage = ({ cartItems, setCartItems, currentUser }) => {
   const getImageUrl = (url) => {
     if (!url) return '';
     if (url.startsWith('http') || url.startsWith('data:')) return url;
-    return `http://localhost:5000${url}`;
+    return `${window.API_URL}${url}`;
   };
 
   // Group cart items by chefId to calculate correct fees
@@ -182,7 +182,7 @@ const CartPage = ({ cartItems, setCartItems, currentUser }) => {
           deliveryLocation: deliveryCoords || undefined,
         };
 
-        const response = await fetch('http://localhost:5000/api/orders/place', {
+        const response = await fetch(window.API_URL + '/api/orders/place', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

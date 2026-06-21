@@ -264,7 +264,7 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
     if (!chefId) return;
     fetchAll();
 
-    const socket = io('http://localhost:5000', { transports: ['websocket', 'polling'] });
+    const socket = io(window.API_URL, { transports: ['websocket', 'polling'] });
     socketRef.current = socket;
 
     // Join room immediately (buffered until connection is ready)
@@ -670,7 +670,7 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
                           onClick={async () => {
                             try {
                               const token = localStorage.getItem('token');
-                              await fetch(`http://localhost:5000/api/orders/${o._id}/resolve-failure`, {
+                              await fetch(`${window.API_URL}/api/orders/${o._id}/resolve-failure`, {
                                 method: 'PATCH',
                                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                                 body: JSON.stringify({ action: 'reassign' })
@@ -687,7 +687,7 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
                           onClick={async () => {
                             try {
                               const token = localStorage.getItem('token');
-                              await fetch(`http://localhost:5000/api/orders/${o._id}/resolve-failure`, {
+                              await fetch(`${window.API_URL}/api/orders/${o._id}/resolve-failure`, {
                                 method: 'PATCH',
                                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                                 body: JSON.stringify({ action: 'cancel', cancellationReason: 'Cancelled after delivery failure.' })
@@ -714,7 +714,7 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
                           onClick={async () => {
                             try {
                               const token = localStorage.getItem('token');
-                              const res = await fetch(`http://localhost:5000/api/orders/${o._id}/reassign-after-cancel`, {
+                              const res = await fetch(`${window.API_URL}/api/orders/${o._id}/reassign-after-cancel`, {
                                 method: 'PATCH',
                                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
                               });
@@ -749,7 +749,7 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
                         onClick={async () => {
                           try {
                             const token = localStorage.getItem('token');
-                            await fetch(`http://localhost:5000/api/orders/${o._id}/rebroadcast`, {
+                            await fetch(`${window.API_URL}/api/orders/${o._id}/rebroadcast`, {
                               method: 'PATCH',
                               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
                             });
@@ -797,7 +797,7 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
                 {menuItems.map(d => (
                   <div key={d._id} className={`bg-white rounded-[30px] overflow-hidden shadow-sm border-2 ${d.isAvailable ? 'border-gray-100' : 'border-red-100 opacity-70'}`}>
                     <div className="h-44 bg-gray-100 flex items-center justify-center relative overflow-hidden">
-                      {d.img ? <img src={`http://localhost:5000${d.img}`} alt={d.name} className="w-full h-full object-cover"/> : <ChefHat size={40} className="text-gray-200"/>}
+                      {d.img ? <img src={`${window.API_URL}${d.img}`} alt={d.name} className="w-full h-full object-cover"/> : <ChefHat size={40} className="text-gray-200"/>}
                       <span className={`absolute top-3 right-3 px-3 py-1 rounded-full text-[9px] font-black uppercase ${d.isAvailable?'bg-green-100 text-green-700':'bg-red-100 text-red-600'}`}>{d.isAvailable?'Live':'Hidden'}</span>
                     </div>
                     <div className="p-5">
@@ -1414,7 +1414,7 @@ const RecipesTab = ({ chefId, token }) => {
               <div>
                 <div className="h-44 bg-gray-100 flex items-center justify-center relative overflow-hidden">
                   {recipe.img ? (
-                    <img src={`http://localhost:5000${recipe.img}`} alt={recipe.name} className="w-full h-full object-cover"/>
+                    <img src={`${window.API_URL}${recipe.img}`} alt={recipe.name} className="w-full h-full object-cover"/>
                   ) : (
                     <BookOpen size={40} className="text-gray-200"/>
                   )}
@@ -1623,7 +1623,7 @@ const ProfileTab = ({ user, chefId, token, onUpdateUser }) => {
         <label htmlFor="profileImgInput" className="relative cursor-pointer group">
           <div className="w-28 h-28 bg-[#1A2316] rounded-[35px] flex items-center justify-center border-4 border-[#FBBF24] shadow-xl overflow-hidden relative">
             {imagePreview ? (
-              <img src={imagePreview.startsWith('blob:') ? imagePreview : `http://localhost:5000${imagePreview}`} className="w-full h-full object-cover" alt="Profile" />
+              <img src={imagePreview.startsWith('blob:') ? imagePreview : `${window.API_URL}${imagePreview}`} className="w-full h-full object-cover" alt="Profile" />
             ) : (
               <span className="text-5xl font-black text-[#FBBF24]">{(user.name||'C').charAt(0)}</span>
             )}

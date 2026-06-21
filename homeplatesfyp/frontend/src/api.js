@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { toast } from './utils/toast';
 
-const API = axios.create({ baseURL: 'http://localhost:5000' });
+const API = axios.create({ baseURL: window.API_URL });
 
 // Request Interceptor: Attach token dynamically
 API.interceptors.request.use(

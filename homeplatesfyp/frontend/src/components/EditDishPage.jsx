@@ -22,7 +22,7 @@ const EditDishPage = () => {
         const res = await API.get(`/api/chef/dish/${id}`);
         const found = res.data;
         if (found) {
-          setDish({ name: found.name, price: found.price, category: found.category, description: found.description || '', prepTime: found.prepTime || '', imagePreview: found.img ? `http://localhost:5000${found.img}` : null, image: null });
+          setDish({ name: found.name, price: found.price, category: found.category, description: found.description || '', prepTime: found.prepTime || '', imagePreview: found.img ? `${window.API_URL}${found.img}` : null, image: null });
           if (found.pricingDetails) setCalcData({ rawMaterials: found.pricingDetails.rawMaterials || 0, packaging: found.pricingDetails.packaging || 0, gasElectric: found.pricingDetails.gasElectric || 0 });
         }
       } catch (e) { console.error(e); }

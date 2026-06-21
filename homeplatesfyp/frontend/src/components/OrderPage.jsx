@@ -16,7 +16,7 @@ const OrderPage = ({ onAddToCart }) => {
   const getImageUrl = (url) => {
     if (!url) return '';
     if (url.startsWith('http') || url.startsWith('data:')) return url;
-    return `http://localhost:5000${url}`;
+    return `${window.API_URL}${url}`;
   };
 
   useEffect(() => {
@@ -24,7 +24,7 @@ const OrderPage = ({ onAddToCart }) => {
     const fetchDish = async () => {
       try {
         setLoading(true);
-        const response = await fetch(`http://localhost:5000/api/chef/dish/${dishId}`);
+        const response = await fetch(`${window.API_URL}/api/chef/dish/${dishId}`);
         if (response.ok) {
           const data = await response.json();
           setDish(data);

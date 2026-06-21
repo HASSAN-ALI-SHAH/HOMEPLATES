@@ -170,7 +170,7 @@ function App() {
         if (token) {
           headers['Authorization'] = `Bearer ${token}`;
         }
-        const res = await fetch(`http://localhost:5000/api/user/profile/${currentUser._id}`, { headers });
+        const res = await fetch(`${window.API_URL}/api/user/profile/${currentUser._id}`, { headers });
         if (res.ok) {
           const freshUser = await res.json();
           setCurrentUser(freshUser);

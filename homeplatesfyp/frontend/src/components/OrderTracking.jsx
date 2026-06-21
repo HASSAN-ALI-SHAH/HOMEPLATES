@@ -82,14 +82,14 @@ const OrderTracking = () => {
     if (!token) { toast.error('Please login to submit feedback.'); return; }
     setSubmittingReview(true);
     try {
-      const chefPromise = fetch('http://localhost:5000/api/reviews', {
+      const chefPromise = fetch(window.API_URL + '/api/reviews', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ chefId: order.chef?._id, orderId: order._id, rating: chefRating, comment: chefComment || 'Great food!' }),
       });
       let riderPromise = Promise.resolve();
       if (order.rider) {
-        riderPromise = fetch('http://localhost:5000/api/reviews', {
+        riderPromise = fetch(window.API_URL + '/api/reviews', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ riderId: order.rider?._id, orderId: order._id, rating: riderRating, comment: riderComment || 'Fast delivery!' }),
@@ -113,7 +113,7 @@ const OrderTracking = () => {
   // ─── Fetch order ────────────────────────────────────────────────────────────
   const fetchOrder = async () => {
     try {
-      const res = await fetch(`http://localhost:5000/api/orders/${orderId}`);
+      const res = await fetch(`${window.API_URL}/api/orders/${orderId}`);
       if (res.ok) { const data = await res.json(); setOrder(data); }
     } catch (err) {
       console.error('Error fetching order:', err);
@@ -125,7 +125,7 @@ const OrderTracking = () => {
   // ─── Socket.io + polling ────────────────────────────────────────────────────
   useEffect(() => {
     fetchOrder();
-    const socket = io('http://localhost:5000', { transports: ['websocket', 'polling'] });
+    const socket = io(window.API_URL, { transports: ['websocket', 'polling'] });
 
     socket.emit('track_order', orderId);
     socket.on('connect', () => { socket.emit('track_order', orderId); });
@@ -152,7 +152,7 @@ const OrderTracking = () => {
   const handleCancelOrder = async () => {
     setCancellingTrack(true);
     try {
-      const response = await fetch(`http://localhost:5000/api/orders/${orderId}/status`, {
+      const response = await fetch(`${window.API_URL}/api/orders/${orderId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
         body: JSON.stringify({ status: 'cancelled', cancellationReason: cancelTrackReason || 'Cancelled by customer' }),

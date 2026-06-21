@@ -31,7 +31,7 @@ const WalletPage = () => {
     if (!currentUser._id) return;
     setLoading(true);
     try {
-      const res = await fetch(`http://localhost:5000/api/wallet/${currentUser._id}`, {
+      const res = await fetch(`${window.API_URL}/api/wallet/${currentUser._id}`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -79,7 +79,7 @@ const WalletPage = () => {
 
     setWithdrawing(true);
     try {
-      const res = await fetch('http://localhost:5000/api/wallet/withdraw', {
+      const res = await fetch(window.API_URL + '/api/wallet/withdraw', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

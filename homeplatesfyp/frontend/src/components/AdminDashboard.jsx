@@ -94,7 +94,7 @@ const AdminDashboard = () => {
   useEffect(() => {
     if (!token) return;
 
-    const socket = io('http://localhost:5000', { transports: ['websocket', 'polling'] });
+    const socket = io(window.API_URL, { transports: ['websocket', 'polling'] });
 
     socket.on('connect', () => {
       socket.emit('join_admin_room');
@@ -450,7 +450,7 @@ const AdminDashboard = () => {
                           <div className="flex gap-4 items-center mb-6">
                             <div className="w-16 h-16 rounded-[20px] bg-[#1A2316] flex items-center justify-center font-black text-[#FBBF24] text-xl overflow-hidden border-2 border-[#FBBF24]">
                               {chef.img ? (
-                                <img src={`http://localhost:5000${chef.img}`} className="w-full h-full object-cover" alt="" />
+                                <img src={`${window.API_URL}${chef.img}`} className="w-full h-full object-cover" alt="" />
                               ) : (
                                 (chef.name || 'C').charAt(0)
                               )}
@@ -846,10 +846,10 @@ const AdminDashboard = () => {
                                   <p className="text-[10px] font-black uppercase text-gray-400 mb-2">Payment Screenshot (Click to Zoom)</p>
                                   <div 
                                     className="relative h-40 w-full rounded-2xl overflow-hidden border border-gray-100 cursor-zoom-in"
-                                    onClick={() => setSelectedScreenshot(`http://localhost:5000${sub.paymentScreenshot}`)}
+                                    onClick={() => setSelectedScreenshot(`${window.API_URL}${sub.paymentScreenshot}`)}
                                   >
                                     <img 
-                                      src={`http://localhost:5000${sub.paymentScreenshot}`} 
+                                      src={`${window.API_URL}${sub.paymentScreenshot}`} 
                                       alt="Payment Proof" 
                                       className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
                                     />

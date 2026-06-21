@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 const getImageUrl = (url) => {
   if (!url) return 'https://images.pexels.com/photos/1640774/pexels-photo-1640774.jpeg';
   if (url.startsWith('http') || url.startsWith('data:')) return url;
-  return `http://localhost:5000${url}`;
+  return `${window.API_URL}${url}`;
 };
 
 const ExploreFood = ({ currentUser }) => {
@@ -25,11 +25,11 @@ const ExploreFood = ({ currentUser }) => {
   useEffect(() => {
     const userCity = currentUser?.city || '';
     const menuUrl = userCity 
-      ? `http://localhost:5000/api/all-dishes?city=${encodeURIComponent(userCity)}` 
-      : 'http://localhost:5000/api/all-dishes';
+      ? `${window.API_URL}/api/all-dishes?city=${encodeURIComponent(userCity)}` 
+      : window.API_URL + '/api/all-dishes';
     const chefsUrl = userCity 
-      ? `http://localhost:5000/api/chefs?city=${encodeURIComponent(userCity)}` 
-      : 'http://localhost:5000/api/chefs';
+      ? `${window.API_URL}/api/chefs?city=${encodeURIComponent(userCity)}` 
+      : window.API_URL + '/api/chefs';
 
     // Fetch Menu
     fetch(menuUrl)

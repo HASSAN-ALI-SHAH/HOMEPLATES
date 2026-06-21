@@ -46,7 +46,7 @@ const OrderTrackingNotification = ({ currentUser }) => {
 
     // For admin: query by userId (admin placed orders as user role or admin role)
     // For regular user: same endpoint
-    const endpoint = `http://localhost:5000/api/orders/my-orders/${currentUser._id}`;
+    const endpoint = `${window.API_URL}/api/orders/my-orders/${currentUser._id}`;
     try {
       const res = await fetch(endpoint, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }

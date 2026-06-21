@@ -6,7 +6,7 @@ import { toast } from '../utils/toast';
 const getImageUrl = (url) => {
   if (!url) return null;
   if (url.startsWith('http') || url.startsWith('data:')) return url;
-  return `http://localhost:5000${url}`;
+  return `${window.API_URL}${url}`;
 };
 
 const PlatformReviewPage = ({ currentUser }) => {
@@ -20,7 +20,7 @@ const PlatformReviewPage = ({ currentUser }) => {
   const fetchReviews = async () => {
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:5000/api/reviews/platform");
+      const res = await fetch(window.API_URL + "/api/reviews/platform");
       if (res.ok) {
         const data = await res.json();
         setReviews(data);
@@ -51,7 +51,7 @@ const PlatformReviewPage = ({ currentUser }) => {
 
     setSubmitting(true);
     try {
-      const res = await fetch("http://localhost:5000/api/reviews", {
+      const res = await fetch(window.API_URL + "/api/reviews", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

@@ -49,11 +49,11 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
     setIsLoading(true);
     try {
       const [userRes, ordersRes, subsRes] = await Promise.allSettled([
-        fetch(`http://localhost:5000/api/user/profile/${user._id}`),
-        fetch(`http://localhost:5000/api/orders/my-orders/${user._id}`, {
+        fetch(`${window.API_URL}/api/user/profile/${user._id}`),
+        fetch(`${window.API_URL}/api/orders/my-orders/${user._id}`, {
           headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
         }),
-        fetch(`http://localhost:5000/api/subscriptions/${user._id}`)
+        fetch(`${window.API_URL}/api/subscriptions/${user._id}`)
       ]);
 
       if (userRes.status === 'fulfilled' && userRes.value.ok) {
@@ -87,7 +87,7 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
 
     // B4: Connect to socket and listen for payment events
     if (user?._id) {
-      const socket = io('http://localhost:5000', { transports: ['websocket', 'polling'] });
+      const socket = io(window.API_URL, { transports: ['websocket', 'polling'] });
       socket.emit('join_user_room', user._id);
       socket.on('connect', () => socket.emit('join_user_room', user._id));
 
@@ -114,7 +114,7 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
     setCancelling(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`http://localhost:5000/api/orders/${cancelOrderModal.orderId}/status`, {
+      const res = await fetch(`${window.API_URL}/api/orders/${cancelOrderModal.orderId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ status: 'cancelled', cancellationReason: cancelReason })
@@ -143,7 +143,7 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
     setSaving(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`http://localhost:5000/api/users/${user._id}`, {
+      const res = await fetch(`${window.API_URL}/api/users/${user._id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -178,7 +178,7 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
   // -------------------------------------------------------
   const toggleSubscription = async (subId, isPaused) => {
     try {
-      const res = await fetch(`http://localhost:5000/api/subscriptions/${subId}/pause`, {
+      const res = await fetch(`${window.API_URL}/api/subscriptions/${subId}/pause`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isPaused: !isPaused })
@@ -199,7 +199,7 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
 
   const toggleSubscriptionDay = async (subId, day) => {
     try {
-      const res = await fetch(`http://localhost:5000/api/subscriptions/${subId}/toggle-day`, {
+      const res = await fetch(`${window.API_URL}/api/subscriptions/${subId}/toggle-day`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ day })
@@ -234,7 +234,7 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
     formData.append('screenshot', reuploadFile);
 
     try {
-      const res = await fetch(`http://localhost:5000/api/subscriptions/${subId}/reupload-payment`, {
+      const res = await fetch(`${window.API_URL}/api/subscriptions/${subId}/reupload-payment`, {
         method: 'PATCH',
         body: formData
       });
@@ -690,7 +690,7 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
                                 </p>
                                 {sub.paymentScreenshot && (
                                   <a
-                                    href={`http://localhost:5000${sub.paymentScreenshot}`}
+                                    href={`${window.API_URL}${sub.paymentScreenshot}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="mt-2 inline-flex items-center gap-1 text-[9px] font-black uppercase text-yellow-700 underline hover:text-yellow-800"
@@ -940,7 +940,7 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
                       onClick={async () => {
                         setSendingHelp(true);
                         try {
-                          const res = await fetch('http://localhost:5000/api/support', {
+                          const res = await fetch(window.API_URL + '/api/support', {
                             method: 'POST',
                             headers: {
                               'Content-Type': 'application/json'

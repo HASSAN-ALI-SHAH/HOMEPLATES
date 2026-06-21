@@ -1295,6 +1295,7 @@ const RecipesTab = ({ chefId, token }) => {
   });
   const [imagePreview, setImagePreview] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [deleteRecipeModal, setDeleteRecipeModal] = useState(null); // { id, name } or null
 
   const fetchRecipes = async () => {
     setLoading(true);
@@ -1376,7 +1377,6 @@ const RecipesTab = ({ chefId, token }) => {
   };
 
   const handleDeleteRecipe = async (recipeId) => {
-    if (!window.confirm('Are you sure you want to delete this recipe?')) return;
     try {
       const res = await API.delete(`/api/chef/recipes/${recipeId}`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -1385,11 +1385,36 @@ const RecipesTab = ({ chefId, token }) => {
       fetchRecipes();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to delete recipe');
+    } finally {
+      setDeleteRecipeModal(null);
     }
   };
 
   return (
     <div className="space-y-5 text-left">
+      {/* Delete Recipe Confirm Modal */}
+      {deleteRecipeModal && (
+        <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-[35px] p-8 max-w-sm w-full shadow-2xl">
+            <h3 className="font-black text-lg uppercase italic mb-2 text-red-600">Delete Recipe?</h3>
+            <p className="text-sm text-gray-600 font-bold mb-2">
+              Are you sure you want to delete <span className="text-[#1A2316] font-black">"{deleteRecipeModal.name}"</span>?
+            </p>
+            <p className="text-xs text-gray-400 font-bold mb-6">This action cannot be undone.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteRecipeModal(null)} className="flex-1 py-3 bg-gray-100 rounded-2xl font-black text-[10px] uppercase hover:bg-gray-200 transition-all">
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDeleteRecipe(deleteRecipeModal.id)}
+                className="flex-1 py-3 bg-red-500 text-white rounded-2xl font-black text-[10px] uppercase hover:bg-red-600 transition-all"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex justify-between items-center">
         <div>
           <h3 className="text-xl font-black uppercase italic">Kitchen Recipes</h3>
@@ -1446,7 +1471,7 @@ const RecipesTab = ({ chefId, token }) => {
                 </div>
               </div>
               <div className="p-5 border-t border-gray-50 flex justify-end">
-                <button onClick={() => handleDeleteRecipe(recipe._id)} className="py-2.5 px-4 bg-red-50 text-red-500 rounded-xl text-[9px] font-black uppercase hover:bg-red-100 transition-all flex items-center gap-1">
+                <button onClick={() => setDeleteRecipeModal({ id: recipe._id, name: recipe.name })} className="py-2.5 px-4 bg-red-50 text-red-500 rounded-xl text-[9px] font-black uppercase hover:bg-red-100 transition-all flex items-center gap-1">
                   <Trash2 size={12}/> Delete
                 </button>
               </div>

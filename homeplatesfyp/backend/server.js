@@ -1,9 +1,5 @@
-try {
-  const dns = require('dns');
-  dns.setServers(['8.8.8.8', '1.1.1.1']);
-} catch (err) {
-  console.warn("⚠️ Could not set DNS servers:", err.message);
-}
+const dns = require('dns');
+dns.setServers(['8.8.8.8', '1.1.1.1']);
 
 const express = require('express');
 const mongoose = require('mongoose');

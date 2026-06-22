@@ -4,6 +4,7 @@ const Subscription = require('../models/Subscription');
 const Menu = require('../models/Menu');
 const SubscriptionPlan = require('../models/SubscriptionPlan');
 const User = require('../models/User');
+const Order = require('../models/Order');
 const WalletTransaction = require('../models/WalletTransaction');
 const authMiddleware = require('../middleware/auth');
 const multer = require('multer');
@@ -108,7 +109,19 @@ router.get('/:userId', async (req, res) => {
     const subs = await Subscription.find({ userId: req.params.userId })
       .populate('chefId', 'name specialty kitchenImage rating phone kitchenName about img')
       .sort({ createdAt: -1 });
-    res.json(subs);
+
+    const subsWithOrders = await Promise.all(subs.map(async (sub) => {
+      const orders = await Order.find({ subscriptionId: sub._id })
+        .populate('rider', 'name phone')
+        .populate('items.dishId', 'name img')
+        .sort({ createdAt: -1 });
+      return {
+        ...sub.toObject(),
+        orders
+      };
+    }));
+
+    res.json(subsWithOrders);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

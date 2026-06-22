@@ -16,17 +16,11 @@ app.use(express.json());
 
 const allowedOrigins = [
   "http://localhost:3000",
-  "http://localhost:3001",
-  "https://homeplates.vercel.app"
+  "http://localhost:3001"
 ];
 app.use(cors({
   origin: (origin, callback) => {
-    if (
-      !origin ||
-      allowedOrigins.includes(origin) ||
-      origin.startsWith("http://localhost:") ||
-      origin.endsWith(".vercel.app")
-    ) {
+    if (!origin || allowedOrigins.includes(origin) || origin.startsWith("http://localhost:")) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
@@ -113,7 +107,7 @@ cron.schedule('0 0 * * *', async () => {
                                 <p>Your daily subscription meal ticket (Order ID: <strong>${newOrder._id}</strong>) has been generated for today.</p>
                                 <p>Our chef is preparing your fresh meal!</p>
                                 <p>Regards,<br/>HomePlates Team</p>
-                               </div>
+                              </div>
                             `;
                             await sendEmail(customer.email, `Daily Subscription Order Generated — #${newOrder._id}`, emailHtml);
                         }
@@ -199,10 +193,7 @@ app.use("/api/reviews",       reviewRoutes);
 app.use("/api/cart",          cartRoutes);
 app.use("/api/wallet",        walletRoutes);
 app.use("/api/support",       supportRoutes);
-
-const path = require('path');
-const uploadStaticDir = process.env.VERCEL ? '/tmp/uploads' : path.join(__dirname, 'uploads');
-app.use("/uploads", express.static(uploadStaticDir));
+app.use("/uploads",           express.static("uploads"));
 
 // --- SERVER START ---
 const PORT = process.env.PORT || 5000;

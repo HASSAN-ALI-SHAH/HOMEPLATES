@@ -12,13 +12,9 @@ const path = require('path');
 const fs = require('fs');
 
 // Ensure uploads directory exists
-const uploadDir = process.env.VERCEL ? '/tmp/uploads/' : './uploads/';
-try {
-  if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
-  }
-} catch (err) {
-  console.warn("⚠️ Warning: Could not create uploads directory:", err.message);
+const uploadDir = './uploads/';
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
 }
 
 // Multer Storage Configuration

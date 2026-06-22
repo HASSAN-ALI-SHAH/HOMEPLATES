@@ -1,6 +1,10 @@
 import axios from 'axios';
 import { toast } from './utils/toast';
 
+if (!window.API_URL) {
+  window.API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+}
+
 const API = axios.create({ baseURL: window.API_URL });
 
 // Request Interceptor: Attach token dynamically

@@ -137,6 +137,7 @@ const ChefProfile = ({ handleAddToCart }) => {
         setScreenshotFile(null);
         setPaymentDetails(null);
         setSelectedPlan(null);
+        navigate('/profile', { state: { tab: 'subscriptions' } });
       } else {
         toast.error(data.message || 'Subscription failed');
       }

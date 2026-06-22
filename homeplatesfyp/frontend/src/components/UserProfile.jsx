@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   LogOut, ChevronRight, Truck, Save, Edit2, User,
   Pause, Play, Package, Star, HelpCircle, Home,
@@ -40,6 +40,7 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
   const [reuploadingSubId, setReuploadingSubId] = useState(null);
   const [reuploadFile, setReuploadFile] = useState(null);
   const [reuploading, setReuploading] = useState(false);
+  const [expandedSubId, setExpandedSubId] = useState(null);
 
   // -------------------------------------------------------
   // FETCH ALL DATA ON MOUNT
@@ -293,7 +294,7 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
   const TABS = [
     { id: 'overview', label: 'Overview', icon: User },
     { id: 'orders', label: 'My Orders', icon: Package },
-    { id: 'subscriptions', label: 'Subscription Details', icon: Star },
+    { id: 'subscriptions', label: 'Subscription Status', icon: Star },
     { id: 'help', label: 'Help & Support', icon: HelpCircle },
   ];
 
@@ -486,12 +487,12 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
                   )}
 
                   {/* Active subscriptions quick peek */}
-                  {subscriptions.filter(s => s.status === 'active' || s.status === 'paused' || s.status === 'pending').length > 0 && (
+                  {subscriptions.filter(s => s.status === 'active' || s.status === 'paused' || s.status === 'pending' || s.status === 'payment_failed').length > 0 && (
                     <div className="bg-green-50 border-2 border-green-200 p-6 rounded-3xl mt-4 text-left">
                       <p className="text-[10px] font-black uppercase text-green-600 mb-3">
-                        📅 Active & Pending Meal Plans ({subscriptions.filter(s => s.status === 'active' || s.status === 'paused' || s.status === 'pending').length})
+                        📅 Active & Pending Meal Plans ({subscriptions.filter(s => s.status === 'active' || s.status === 'paused' || s.status === 'pending' || s.status === 'payment_failed').length})
                       </p>
-                      {subscriptions.filter(s => s.status === 'active' || s.status === 'paused' || s.status === 'pending').slice(0, 2).map(sub => (
+                      {subscriptions.filter(s => s.status === 'active' || s.status === 'paused' || s.status === 'pending' || s.status === 'payment_failed').slice(0, 2).map(sub => (
                         <div key={sub._id} className="flex flex-col md:flex-row justify-between items-start md:items-center py-3 border-t border-green-100 gap-3">
                           <div>
                             <p className="font-black text-sm text-[#1A2316]">{sub.chefId?.name || 'Home Chef'}</p>
@@ -503,7 +504,8 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
                             <span className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase ${
                               sub.status === 'active' ? 'bg-green-100 text-green-700' :
                               sub.status === 'paused' ? 'bg-yellow-100 text-yellow-700' :
-                              'bg-orange-100 text-orange-700'
+                              sub.status === 'pending' ? 'bg-orange-100 text-orange-700' :
+                              'bg-red-100 text-red-600'
                             }`}>
                               {sub.status}
                             </span>
@@ -636,7 +638,7 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
                 <div className="space-y-6">
                   <div className="flex justify-between items-center mb-6">
                     <h2 className="text-3xl font-black uppercase italic tracking-tighter">
-                      Meal Plans<span className="text-[#FBBF24]">.</span>
+                      Subscription Status<span className="text-[#FBBF24]">.</span>
                     </h2>
                     <button
                       onClick={() => navigate('/chefs')}
@@ -660,97 +662,97 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
                     </div>
                   ) : (
                     subscriptions.map(sub => (
-                        <div key={sub._id} className="bg-gray-50 p-7 rounded-[28px]">
+                      <div key={sub._id} className="bg-gray-50 p-7 rounded-[28px] border border-gray-200/50 shadow-sm">
 
-                          {/* B3: Payment Approved Banner */}
-                          {sub.paymentStatus === 'approved' && sub.status === 'active' && (
-                            <div className="mb-5 bg-green-50 border-2 border-green-300 rounded-2xl p-4 flex items-start gap-3">
-                              <CheckCircle size={18} className="text-green-500 flex-shrink-0 mt-0.5" />
-                              <div>
-                                <p className="text-green-700 font-black text-[10px] uppercase tracking-widest mb-1">
-                                  ✅ Payment Approved — Subscription Active
-                                </p>
-                                <p className="text-xs text-green-600 font-bold">
-                                  Your payment has been verified by admin. Your {sub.planType} meal plan is now active. Meals will be delivered on your selected days.
-                                </p>
-                              </div>
+                        {/* Approved Banner */}
+                        {sub.paymentStatus === 'approved' && sub.status === 'active' && (
+                          <div className="mb-5 bg-green-50 border-2 border-green-300 rounded-2xl p-4 flex items-start gap-3">
+                            <CheckCircle size={18} className="text-green-600 flex-shrink-0 mt-0.5" />
+                            <div>
+                              <p className="text-green-800 font-black text-[10px] uppercase tracking-widest mb-1">
+                                ✅ Subscription Active
+                              </p>
+                              <p className="text-xs text-green-700 font-bold">
+                                Admin approved your subscription. Your status is active.
+                              </p>
                             </div>
-                          )}
+                          </div>
+                        )}
 
-                          {/* B3: Payment Pending Banner */}
-                          {sub.paymentStatus === 'pending' && (
-                            <div className="mb-5 bg-yellow-50 border-2 border-yellow-300 rounded-2xl p-4 flex items-start gap-3">
-                              <Clock size={18} className="text-yellow-500 flex-shrink-0 mt-0.5" />
-                              <div>
-                                <p className="text-yellow-700 font-black text-[10px] uppercase tracking-widest mb-1">
-                                  ⏳ Payment Under Review
-                                </p>
-                                <p className="text-xs text-yellow-600 font-bold">
-                                  Your payment screenshot has been submitted and is awaiting admin verification. You'll be notified once approved.
-                                </p>
-                                {sub.paymentScreenshot && (
-                                  <a
-                                    href={`${window.API_URL}${sub.paymentScreenshot}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="mt-2 inline-flex items-center gap-1 text-[9px] font-black uppercase text-yellow-700 underline hover:text-yellow-800"
-                                  >
-                                    📎 View Submitted Screenshot →
-                                  </a>
-                                )}
-                              </div>
+                        {/* Pending Review Banner */}
+                        {sub.paymentStatus === 'pending' && (
+                          <div className="mb-5 bg-yellow-50 border-2 border-yellow-300 rounded-2xl p-4 flex items-start gap-3">
+                            <Clock size={18} className="text-yellow-600 flex-shrink-0 mt-0.5" />
+                            <div>
+                              <p className="text-yellow-800 font-black text-[10px] uppercase tracking-widest mb-1">
+                                ⏳ Payment Under Review
+                              </p>
+                              <p className="text-xs text-yellow-700 font-bold">
+                                Your subscription payment proof has been submitted and is awaiting admin verification. You will be notified once approved.
+                              </p>
+                              {sub.paymentScreenshot && (
+                                <a
+                                  href={`${window.API_URL}${sub.paymentScreenshot}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="mt-2 inline-flex items-center gap-1 text-[9px] font-black uppercase text-yellow-700 underline hover:text-yellow-850"
+                                >
+                                  📎 View Submitted Screenshot →
+                                </a>
+                              )}
                             </div>
-                          )}
+                          </div>
+                        )}
 
-                          {/* B3: Payment Rejected Banner */}
-                          {(sub.paymentStatus === 'rejected' || sub.status === 'payment_failed') && (
-                            <div className="mb-5 bg-red-50 border-2 border-red-300 rounded-2xl p-4 flex items-start gap-3">
-                              <AlertTriangle size={18} className="text-red-500 flex-shrink-0 mt-0.5" />
-                              <div>
-                                <p className="text-red-700 font-black text-[10px] uppercase tracking-widest mb-1">
-                                  ❌ Payment Rejected
-                                </p>
-                                <p className="text-xs text-red-600 font-bold">
-                                  Your payment proof was rejected by the admin. Please re-upload a clear and valid payment screenshot to activate your subscription.
-                                </p>
-                                {reuploadingSubId === sub._id ? (
-                                  <form onSubmit={(e) => handleReuploadSubmit(e, sub._id)} className="mt-3 space-y-2 text-left">
-                                    <input
-                                      type="file"
-                                      accept="image/*"
-                                      onChange={(e) => setReuploadFile(e.target.files[0])}
-                                      className="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-[10px] file:font-black file:uppercase file:bg-red-50 file:text-red-700 hover:file:bg-red-100 transition-all cursor-pointer"
-                                    />
-                                    <div className="flex gap-2">
-                                      <button
-                                        type="submit"
-                                        disabled={reuploading || !reuploadFile}
-                                        className="bg-red-600 text-white text-[9px] font-black uppercase px-4 py-2 rounded-xl disabled:opacity-50 hover:bg-red-700 transition-all"
-                                      >
-                                        {reuploading ? 'Uploading...' : 'Submit Screenshot'}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => { setReuploadingSubId(null); setReuploadFile(null); }}
-                                        className="bg-gray-100 text-[#1A2316] text-[9px] font-black uppercase px-4 py-2 rounded-xl hover:bg-gray-200 transition-all"
-                                      >
-                                        Cancel
-                                      </button>
-                                    </div>
-                                  </form>
-                                ) : (
-                                  <button
-                                    onClick={() => setReuploadingSubId(sub._id)}
-                                    className="mt-2 text-[9px] font-black uppercase text-red-700 underline hover:text-red-800 transition-all"
-                                  >
-                                    Re-upload Payment Proof →
-                                  </button>
-                                )}
-                              </div>
+                        {/* Rejected Banner */}
+                        {(sub.paymentStatus === 'rejected' || sub.status === 'payment_failed') && (
+                          <div className="mb-5 bg-red-50 border-2 border-red-300 rounded-2xl p-4 flex items-start gap-3">
+                            <AlertTriangle size={18} className="text-red-500 flex-shrink-0 mt-0.5" />
+                            <div className="w-full">
+                              <p className="text-red-800 font-black text-[10px] uppercase tracking-widest mb-1">
+                                ❌ Payment Rejected
+                              </p>
+                              <p className="text-xs text-red-700 font-bold mb-3">
+                                Admin rejected your payment proof. Please re-upload the proof.
+                              </p>
+                              {reuploadingSubId === sub._id ? (
+                                <form onSubmit={(e) => handleReuploadSubmit(e, sub._id)} className="mt-3 space-y-2 text-left bg-white p-4 rounded-xl border border-red-100">
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={(e) => setReuploadFile(e.target.files[0])}
+                                    className="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-[10px] file:font-black file:uppercase file:bg-red-50 file:text-red-750 hover:file:bg-red-100 transition-all cursor-pointer"
+                                  />
+                                  <div className="flex gap-2 pt-1">
+                                    <button
+                                      type="submit"
+                                      disabled={reuploading || !reuploadFile}
+                                      className="bg-red-600 text-white text-[9px] font-black uppercase px-4 py-2.5 rounded-xl disabled:opacity-50 hover:bg-red-700 transition-all"
+                                    >
+                                      {reuploading ? 'Uploading...' : 'Submit Screenshot'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => { setReuploadingSubId(null); setReuploadFile(null); }}
+                                      className="bg-gray-100 text-[#1A2316] text-[9px] font-black uppercase px-4 py-2.5 rounded-xl hover:bg-gray-200 transition-all"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </form>
+                              ) : (
+                                <button
+                                  onClick={() => setReuploadingSubId(sub._id)}
+                                  className="mt-2 bg-red-650 text-white text-[9px] font-black uppercase px-4 py-2.5 rounded-xl hover:bg-red-700 transition-all inline-block"
+                                >
+                                  Re-upload Proof Now
+                                </button>
+                              )}
                             </div>
-                          )}
+                          </div>
+                        )}
 
-                          <div className="flex justify-between items-start mb-5">
+                        <div className="flex justify-between items-start mb-5">
                           <div>
                             <p className="font-black text-lg text-[#1A2316]">
                               {sub.chefId?.name || 'Chef'}
@@ -789,15 +791,15 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
 
                         <div className="grid grid-cols-2 gap-3 text-sm mb-5">
                           {[
-                            ['Days', sub.selectedDays?.join(', ') || 'N/A'],
-                            ['Food Delivered', `${sub.deliveredDays || 0} days`],
-                            ['Remaining', `${sub.remainingDays || 0} days`],
+                            ['Days Included', sub.selectedDays?.join(', ') || 'N/A'],
+                            ['Food Delivered', `${sub.deliveredDays || 0} deliveries`],
+                            ['Remaining Left', `${sub.remainingDays || 0} deliveries left`],
                             ['Start Date', sub.startDate ? new Date(sub.startDate).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'],
                             ['End Date', sub.endDate ? new Date(sub.endDate).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'],
                             ['Purchase Date', sub.createdAt ? new Date(sub.createdAt).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'],
                             ['Total Cost', `PKR ${sub.totalCost?.toLocaleString() || 0}`],
                           ].map(([l, v]) => (
-                            <div key={l} className={`bg-white p-4 rounded-xl ${l === 'Days' ? 'col-span-2' : ''}`}>
+                            <div key={l} className={`bg-white p-4 rounded-xl ${l === 'Days Included' ? 'col-span-2' : ''}`}>
                               <p className="text-[9px] font-black uppercase text-gray-400 mb-1">{l}</p>
                               <p className="font-black text-sm text-[#1A2316]">{v}</p>
                             </div>
@@ -841,11 +843,79 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
                             <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
                               <div
                                 className="h-full bg-[#FBBF24] rounded-full transition-all"
-                                style={{ width: `${Math.min(100, (sub.remainingDays / (sub.planType === 'weekly' ? 7 : 30)) * 100)}%` }}
+                                style={{ width: `${Math.min(100, (sub.remainingDays / (sub.planType === 'weekly' ? 7 : sub.planType === '21days' ? 21 : 30)) * 100)}%` }}
                               />
                             </div>
                           </div>
                         )}
+
+                        {/* Delivery history accordion */}
+                        <div className="bg-white p-5 rounded-2xl mb-5 border border-gray-150">
+                          <button
+                            type="button"
+                            onClick={() => setExpandedSubId(expandedSubId === sub._id ? null : sub._id)}
+                            className="w-full flex items-center justify-between text-[10px] font-black uppercase text-gray-500 hover:text-gray-800 transition-all"
+                          >
+                            <span>📦 View Complete Delivery History ({sub.orders?.length || 0})</span>
+                            <ChevronRight
+                              size={14}
+                              className={`transform transition-transform ${expandedSubId === sub._id ? 'rotate-90' : ''}`}
+                            />
+                          </button>
+
+                          {expandedSubId === sub._id && (
+                            <div className="mt-4 pt-4 border-t border-gray-100 space-y-3">
+                              {!sub.orders || sub.orders.length === 0 ? (
+                                <p className="text-xs text-gray-400 font-bold py-2 text-left">
+                                  No deliveries recorded yet. Deliveries will occur on your selected days.
+                                </p>
+                              ) : (
+                                <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                                  {sub.orders.map(order => (
+                                    <div key={order._id} className="p-3 bg-gray-50 rounded-xl border border-gray-100 text-left">
+                                      <div className="flex justify-between items-start gap-2 mb-2">
+                                        <div>
+                                          <p className="text-[10px] text-gray-400 font-black">
+                                            {new Date(order.orderDate || order.createdAt).toLocaleDateString('en-PK', {
+                                              day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                                            })}
+                                          </p>
+                                          <p className="text-xs font-black text-[#1A2316] mt-0.5">Order ID: ...{order._id.slice(-6)}</p>
+                                        </div>
+                                        <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase ${
+                                          order.status === 'delivered' ? 'bg-green-100 text-green-700' :
+                                          order.status === 'cancelled' ? 'bg-red-100 text-red-700' :
+                                          'bg-blue-100 text-blue-700'
+                                        }`}>
+                                          {order.status}
+                                        </span>
+                                      </div>
+
+                                      <div className="text-xs font-bold text-gray-600 mb-2">
+                                        {order.items?.map((item, i) => (
+                                          <span key={i} className="block">
+                                            🍽️ {item.dishId?.name || 'Meal'} ({item.portion || 'Full'}) × {item.quantity}
+                                          </span>
+                                        ))}
+                                      </div>
+
+                                      <div className="flex flex-col gap-1 text-[9px] font-black uppercase text-gray-400 pt-2 border-t border-gray-200/60">
+                                        <div>
+                                          Rider: <span className="text-[#1A2316]">{order.rider?.name || 'Finding Rider...'}</span>
+                                        </div>
+                                        {order.rider?.phone && (
+                                          <div>
+                                            Contact: <span className="text-[#1A2316]">{order.rider.phone}</span>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
 
                         {(sub.status === 'active' || sub.status === 'paused') && (
                           <button

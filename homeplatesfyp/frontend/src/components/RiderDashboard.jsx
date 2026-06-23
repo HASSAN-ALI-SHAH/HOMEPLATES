@@ -21,13 +21,16 @@ const RiderDashboard = ({ user: propUser, onLogout, onUserUpdate }) => {
 
   const [activeTab, setActiveTab] = useState('overview');
   const [showNoti, setShowNoti] = useState(false);
-  const [isOnline, setIsOnline] = useState(true);
+  const [isOnline, setIsOnline] = useState(currentUser.verificationStatus === 'verified');
   const [loading, setLoading] = useState(true);
 
   const [notifications, setNotifications] = useState([]);
   const [availableOrders, setAvailableOrders] = useState([]);
   const [activeOrder, setActiveOrder] = useState(null);
   const [walletData, setWalletData] = useState({ totalBalance: 0, pendingBalance: 0, transactions: [] });
+  const [withdrawRequests, setWithdrawRequests] = useState([]);
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [withdrawing, setWithdrawing] = useState(false);
 
   // New order alert modal state
   const [newOrderAlert, setNewOrderAlert] = useState(null);
@@ -73,21 +76,55 @@ const RiderDashboard = ({ user: propUser, onLogout, onUserUpdate }) => {
     if (!riderId) return;
     setLoading(true);
     try {
-      const [availRes, activeRes, walletRes] = await Promise.allSettled([
+      const [availRes, activeRes, walletRes, withdrawalsRes] = await Promise.allSettled([
         API.get('/api/orders/rider/available', authH),
         API.get(`/api/orders/rider/active/${riderId}`),
         API.get(`/api/wallet/${riderId}`, authH),
+        API.get('/api/wallet/rider/withdrawals', authH)
       ]);
 
       if (availRes.status === 'fulfilled') setAvailableOrders(availRes.value.data || []);
       if (activeRes.status === 'fulfilled') setActiveOrder(activeRes.value.data || null);
       if (walletRes.status === 'fulfilled') setWalletData(walletRes.value.data);
+      if (withdrawalsRes.status === 'fulfilled') setWithdrawRequests(withdrawalsRes.value.data || []);
     } catch (e) {
       console.error('Fetch error:', e);
     } finally {
       setLoading(false);
     }
   }, [riderId]);
+
+  const handleRequestWithdrawal = async (e) => {
+    e.preventDefault();
+    const amountNum = Number(withdrawAmount);
+    if (!amountNum || isNaN(amountNum) || amountNum < 1000) {
+      toast.error('Minimum withdrawal request is Rs. 1,000');
+      return;
+    }
+    if (amountNum > walletData.totalBalance) {
+      toast.error('Withdrawal amount cannot exceed your current wallet balance.');
+      return;
+    }
+    
+    // Check if there is already an active request open
+    const hasPendingOrApproved = withdrawRequests.some(r => ['pending', 'approved'].includes(r.status));
+    if (hasPendingOrApproved) {
+      toast.error('You already have a pending or approved withdrawal request open.');
+      return;
+    }
+
+    setWithdrawing(true);
+    try {
+      await API.post('/api/wallet/rider/withdraw', { amount: amountNum }, authH);
+      toast.success('Withdrawal request submitted successfully! Admin will review it shortly.');
+      setWithdrawAmount('');
+      await fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.message || err.message || 'Failed to submit withdrawal request.');
+    } finally {
+      setWithdrawing(false);
+    }
+  };
 
   // ─── SOCKET.IO SETUP ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -149,6 +186,40 @@ const RiderDashboard = ({ user: propUser, onLogout, onUserUpdate }) => {
     socket.on('delivery_complete', ({ earning, message }) => {
       addNotification('💰 Delivery Complete!', message || `PKR ${earning} added to your wallet.`);
       fetchData();
+    });
+
+    // Rider verification update event
+    socket.on('verificationUpdate', ({ status, rejectionReason }) => {
+      const updatedUser = { ...currentUser, verificationStatus: status, rejectionReason };
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      if (onUserUpdate) onUserUpdate(updatedUser);
+      if (status === 'verified') {
+        toast.success("Your account has been verified. You can now go online and accept orders.");
+        setIsOnline(true);
+      } else if (status === 'rejected') {
+        toast.error(`Your verification request was rejected: ${rejectionReason || 'No reason specified'}`);
+        setIsOnline(false);
+      }
+      addNotification(
+        status === 'verified' ? '✅ Verified' : '❌ Verification Rejected',
+        status === 'verified' ? "Your account has been verified by the administrator." : `Reason: ${rejectionReason || 'None'}`
+      );
+    });
+
+    // Rider withdrawal status update event
+    socket.on('withdrawalStatusUpdate', ({ requestId, status, proofImage }) => {
+      addNotification(
+        status === 'paid' ? '💰 Withdrawal Paid!' : `💸 Withdrawal status: ${status}`,
+        status === 'paid' 
+          ? `Your withdrawal request has been paid. View proof in your dashboard.`
+          : `Withdrawal request status updated to: ${status}`
+      );
+      if (status === 'paid') {
+        toast.success("Your withdrawal request has been paid!");
+      } else if (status === 'rejected') {
+        toast.error("Your withdrawal request has been rejected.");
+      }
+      fetchData(); // reload balance & list
     });
 
     return () => {
@@ -689,7 +760,13 @@ const RiderDashboard = ({ user: propUser, onLogout, onUserUpdate }) => {
         <div className="mt-4 p-3 bg-white/5 rounded-2xl border border-white/5 flex items-center justify-between px-4 mb-6">
           <span className="text-[9px] font-black uppercase tracking-wider text-gray-400">Duty Status</span>
           <button
-            onClick={() => setIsOnline(!isOnline)}
+            onClick={() => {
+              if (currentUser.verificationStatus !== 'verified') {
+                toast.error("Your account is pending admin verification. You'll be notified once approved.");
+                return;
+              }
+              setIsOnline(!isOnline);
+            }}
             className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${isOnline ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}
           >
             {isOnline ? 'ONLINE' : 'OFFLINE'}
@@ -760,6 +837,34 @@ const RiderDashboard = ({ user: propUser, onLogout, onUserUpdate }) => {
             </div>
           </div>
         </header>
+
+        {/* Verification Status Banners */}
+        {currentUser.verificationStatus === 'pending' && (
+          <div className="mb-8 bg-amber-50 border-2 border-amber-200 rounded-[30px] p-6 text-left flex items-start gap-4 shadow-sm">
+            <div className="bg-amber-500 p-2.5 rounded-2xl text-white mt-0.5"><Info size={20} /></div>
+            <div>
+              <h4 className="font-black uppercase text-xs tracking-wider text-amber-700">Verification Pending</h4>
+              <p className="text-xs text-amber-600 font-bold mt-1">
+                Your rider profile is currently being reviewed by the HomePlates administration. You will receive an in-app and email alert as soon as your account is verified.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {currentUser.verificationStatus === 'rejected' && (
+          <div className="mb-8 bg-red-50 border-2 border-red-200 rounded-[30px] p-6 text-left flex items-start gap-4 shadow-sm">
+            <div className="bg-red-500 p-2.5 rounded-2xl text-white mt-0.5"><X size={20} /></div>
+            <div>
+              <h4 className="font-black uppercase text-xs tracking-wider text-red-700">Verification Rejected</h4>
+              <p className="text-xs text-red-600 font-bold mt-1">
+                Reason: <strong>{currentUser.rejectionReason || 'Document details mismatch'}</strong>.
+              </p>
+              <p className="text-xs text-red-500 font-bold mt-2">
+                Please go to the <strong>Rider Profile</strong> tab to update your operational credentials and re-submit for review.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* ══ TAB: OVERVIEW ══ */}
         {activeTab === 'overview' && (
@@ -1225,6 +1330,81 @@ const RiderDashboard = ({ user: propUser, onLogout, onUserUpdate }) => {
                   <h3 className={`text-2xl font-black italic ${c}`}>{v}</h3>
                 </div>
               ))}
+            </div>
+
+            {/* Request Withdrawal Form */}
+            <div className="bg-white p-8 rounded-[35px] shadow-sm border border-gray-100 grid md:grid-cols-2 gap-8 text-left">
+              <div>
+                <h4 className="font-black uppercase text-sm mb-3">Request Payout</h4>
+                <p className="text-xs text-gray-400 font-bold mb-6">Withdraw your hard-earned balance directly. Processing takes up to 24 hours.</p>
+                
+                <form onSubmit={handleRequestWithdrawal} className="space-y-4">
+                  <div>
+                    <label className="text-[9px] font-black uppercase text-gray-400 ml-4 block mb-1">Withdrawal Amount (PKR)</label>
+                    <input
+                      type="number"
+                      required
+                      value={withdrawAmount}
+                      onChange={e => setWithdrawAmount(e.target.value)}
+                      placeholder="e.g. 1500 (Minimum 1000)"
+                      className="w-full bg-gray-50 p-4 rounded-2xl outline-none font-bold text-sm border border-transparent focus:border-[#FBBF24] transition-all"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={withdrawing || walletData.totalBalance < 1000}
+                    className="w-full bg-[#1A2316] text-[#FBBF24] py-4 rounded-2xl font-black uppercase text-[10px] tracking-wider transition-all disabled:opacity-50"
+                  >
+                    {withdrawing ? 'Submitting...' : 'Request Payout'}
+                  </button>
+                </form>
+              </div>
+
+              <div className="flex flex-col justify-center bg-gray-50 rounded-[30px] p-6 text-center border border-gray-100">
+                <DollarSign size={36} className="text-[#FBBF24] mx-auto mb-2" />
+                <h5 className="font-black uppercase text-xs text-[#1A2316]">Payout Guidelines</h5>
+                <ul className="text-[10px] text-gray-500 font-bold mt-2 space-y-1 text-left list-disc list-inside">
+                  <li>Minimum payout limit is Rs. 1,000.</li>
+                  <li>Earnings deduct from wallet balance ONLY when paid.</li>
+                  <li>You must have zero other active pending/approved requests.</li>
+                </ul>
+              </div>
+            </div>
+
+            {/* Withdrawal Requests Log */}
+            <div className="bg-white p-7 rounded-[30px] shadow-sm border border-gray-100 text-left">
+              <h4 className="font-black uppercase text-sm mb-5">Withdrawal Requests Log</h4>
+              {!withdrawRequests.length ? (
+                <p className="text-gray-300 text-center py-10 font-black text-[10px] uppercase">No withdrawal requests submitted yet.</p>
+              ) : (
+                <div className="divide-y divide-gray-50">
+                  {withdrawRequests.map(req => (
+                    <div key={req._id} className="flex justify-between items-center py-4">
+                      <div>
+                        <p className="font-black">💸 Request for PKR {req.amount}</p>
+                        <p className="text-xs text-gray-400">{new Date(req.requestedAt).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                        {req.adminNote && <p className="text-xs text-red-500 mt-1 font-semibold">Admin note: "{req.adminNote}"</p>}
+                        {req.proofImage && (
+                          <a 
+                            href={`${window.API_URL}${req.proofImage}`} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-[#FBBF24] text-[10px] font-black underline mt-1.5 block hover:text-amber-600"
+                          >
+                            🖼️ View Proof of Payment
+                          </a>
+                        )}
+                      </div>
+                      <span className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase ${
+                        req.status === 'paid' ? 'bg-green-100 text-green-700' :
+                        req.status === 'approved' ? 'bg-blue-100 text-blue-700 animate-pulse' :
+                        req.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                        'bg-yellow-100 text-yellow-700'
+                      }`}>{req.status}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="bg-white p-7 rounded-[30px] shadow-sm border border-gray-100">

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   LogOut, ChevronRight, Truck, Save, Edit2, User,
   Pause, Play, Package, Star, HelpCircle, Home,
@@ -41,6 +42,18 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
   const [reuploadFile, setReuploadFile] = useState(null);
   const [reuploading, setReuploading] = useState(false);
   const [expandedSubId, setExpandedSubId] = useState(null);
+  const [selectedScreenshot, setSelectedScreenshot] = useState(null);
+
+  useEffect(() => {
+    if (selectedScreenshot) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [selectedScreenshot]);
 
   // -------------------------------------------------------
   // FETCH ALL DATA ON MOUNT
@@ -691,14 +704,13 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
                                 Your subscription payment proof has been submitted and is awaiting admin verification. You will be notified once approved.
                               </p>
                               {sub.paymentScreenshot && (
-                                <a
-                                  href={`${window.API_URL}${sub.paymentScreenshot}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="mt-2 inline-flex items-center gap-1 text-[9px] font-black uppercase text-yellow-700 underline hover:text-yellow-850"
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedScreenshot(`${window.API_URL}${sub.paymentScreenshot}`)}
+                                  className="mt-2 inline-flex items-center gap-1 text-[9px] font-black uppercase text-yellow-700 underline hover:text-yellow-850 bg-transparent border-none outline-none cursor-pointer"
                                 >
                                   📎 View Submitted Screenshot →
-                                </a>
+                                </button>
                               )}
                             </div>
                           </div>
@@ -1064,6 +1076,29 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
           )}
         </div>
       </div>
+
+      {/* Lightbox screenshot modal */}
+      {selectedScreenshot && createPortal(
+        <div 
+          className="fixed inset-0 z-[100000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          onClick={() => setSelectedScreenshot(null)}
+        >
+          <div className="relative max-w-2xl w-full flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
+            <button 
+              onClick={() => setSelectedScreenshot(null)} 
+              className="absolute -top-12 right-0 text-white font-black text-xl hover:text-[#FBBF24] bg-transparent border-none cursor-pointer"
+            >
+              Close ✕
+            </button>
+            <img 
+              src={selectedScreenshot} 
+              className="max-w-full max-h-[80vh] object-contain rounded-2xl shadow-2xl" 
+              alt="Zoomed Screenshot" 
+            />
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 };

@@ -548,8 +548,18 @@ const ChefProfile = ({ handleAddToCart }) => {
                                 toast.error(chef?.isActive === false ? 'This chef is currently offline.' : 'Chef not verified yet.');
                                 return;
                               }
-                              setCustomizingItem(item);
-                              setSelectedPortion('Full');
+                              handleAddToCart({
+                                _id: item._id,
+                                name: item.name,
+                                price: item.price,
+                                basePrice: item.price,
+                                img: item.img,
+                                chefId: id,
+                                chefName: chef?.name || 'Chef',
+                                qty: 1,
+                                portion: 'Full'
+                              });
+                              navigate('/cart');
                             }}
                             disabled={!item.isAvailable || !chef?.isActive || !chef?.isVerified}
                             className="bg-[#1A2316] text-white p-4 rounded-2xl hover:bg-[#FBBF24] hover:text-[#1A2316] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
@@ -783,67 +793,10 @@ const ChefProfile = ({ handleAddToCart }) => {
                   </div>
                 </div>
               ) : (
-                /* Fallback to custom meal plans if chef hasn't uploaded any packages */
-                <div className="grid lg:grid-cols-2 gap-16 items-start">
-                  <div className="space-y-6">
-                    <h2 className="text-3xl font-black uppercase italic text-[#1A2316]">Build Meal Plan</h2>
-                    <div className="space-y-4">
-                      {[
-                        { key: 'breakfast', icon: <Coffee size={24} />, desc: 'Paratha, Egg, Tea / Channay' },
-                        { key: 'lunch', icon: <Sun size={24} />, desc: 'Daal Chawal / Seasonal Sabzi' },
-                        { key: 'dinner', icon: <Moon size={24} />, desc: 'Chicken Karahi / Kabab with Roti' }
-                      ].map(({ key, icon, desc }) => (
-                        <button
-                          key={key}
-                          onClick={() => setSelectedMeals(p => ({ ...p, [key]: !p[key] }))}
-                          className={`w-full p-6 rounded-[35px] border-2 flex items-center justify-between transition-all ${selectedMeals[key] ? 'border-[#1A2316] bg-white shadow-xl' : 'border-gray-50 opacity-40'}`}
-                        >
-                          <div className="flex items-center gap-5 text-left">
-                            <div className={`p-4 rounded-2xl ${selectedMeals[key] ? 'bg-[#1A2316] text-[#FBBF24]' : 'bg-gray-100'}`}>
-                              {icon}
-                            </div>
-                            <div>
-                              <span className="font-black uppercase text-xs block text-[#1A2316]">{key}</span>
-                              <span className="text-[11px] text-gray-400 font-bold italic tracking-tight">{desc}</span>
-                            </div>
-                          </div>
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${selectedMeals[key] ? 'bg-green-500 text-white shadow-lg shadow-green-200' : 'border-2 border-gray-100'}`}>
-                            {selectedMeals[key] && <CheckCircle2 size={16} />}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="bg-[#1A2316] text-white p-12 rounded-[55px] shadow-2xl sticky top-10">
-                    <div className="flex gap-3 mb-10 bg-white/5 p-2 rounded-3xl w-fit">
-                      {['weekly', 'monthly'].map(t => (
-                        <button
-                          key={t}
-                          onClick={() => setSelectedPlanType(t)}
-                          className={`px-8 py-3 rounded-2xl text-[10px] font-black uppercase transition-all ${selectedPlanType === t ? 'bg-[#FBBF24] text-[#1A2316]' : 'text-gray-400'}`}
-                        >
-                          {t}
-                        </button>
-                      ))}
-                    </div>
-                    <p className="text-gray-400 text-xs font-black uppercase tracking-[0.2em] mb-2">Grand Total</p>
-                    <h3 className="text-6xl font-black text-[#FBBF24] italic">Rs. {calculatePrice()}</h3>
-                    <p className="text-gray-500 text-[10px] font-bold mt-2">
-                      {selectedPlanType === 'weekly' ? 'Weekly plan · 7 days' : 'Monthly plan · 30 days'}
-                    </p>
-
-                    <button
-                      onClick={handleSubscribe}
-                      disabled={subscribing}
-                      className="w-full bg-[#FBBF24] text-[#1A2316] py-6 rounded-[30px] font-black uppercase text-xs tracking-[0.2em] mt-10 hover:scale-105 transition-all shadow-xl shadow-[#FBBF24]/20 disabled:opacity-60"
-                    >
-                      {subscribing ? 'Processing...' : 'Start My Plan'}
-                    </button>
-                    <p className="text-[10px] text-gray-500 mt-6 text-center font-bold tracking-widest uppercase opacity-50 italic">
-                      Manage, Pause or Cancel from your Profile
-                    </p>
-                  </div>
+                <div className="bg-gray-50 border-2 border-dashed border-gray-200 p-12 rounded-[55px] text-center flex flex-col justify-center items-center h-80 text-gray-300 w-full">
+                  <Star size={40} className="mb-4 opacity-20" />
+                  <p className="font-black text-[10px] uppercase">No Subscription Plans Available</p>
+                  <p className="text-xs text-gray-400 mt-2 font-bold max-w-[200px] mx-auto">This chef has not uploaded any subscription plans yet.</p>
                 </div>
               )}
             </div>
@@ -987,54 +940,6 @@ const ChefProfile = ({ handleAddToCart }) => {
         )}
       </AnimatePresence>
 
-      {/* Portion Customization Modal */}
-      <AnimatePresence>
-        {customizingItem && (
-          <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setCustomizingItem(null)} />
-            <div className="relative w-full max-w-md bg-white rounded-[45px] shadow-2xl p-8 border border-gray-100 overflow-hidden text-left animate-in zoom-in duration-300">
-              <button onClick={() => setCustomizingItem(null)} className="absolute top-6 right-6 p-2 bg-gray-100 rounded-full hover:bg-gray-200">✕</button>
-              
-              <h3 className="text-2xl font-black italic uppercase text-[#1A2316] mb-2 font-sans">Select Portion Size</h3>
-              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-6">Choose how much you want to order</p>
-              
-              <div className="space-y-4 mb-8">
-                {[
-                  { size: 'Half', label: 'Half Portion', price: Math.round(customizingItem.price * 0.6), desc: 'Ideal for 1 person' },
-                  { size: 'Full', label: 'Full Portion', price: customizingItem.price, desc: 'Standard serving size' }
-                ].map(opt => (
-                  <button
-                    key={opt.size}
-                    type="button"
-                    onClick={() => setSelectedPortion(opt.size)}
-                    className={`w-full p-5 rounded-[25px] border-2 text-left transition-all flex items-center justify-between ${
-                      selectedPortion === opt.size 
-                        ? 'border-[#1A2316] bg-white shadow-xl' 
-                        : 'border-gray-50 bg-gray-50/50 hover:bg-gray-50'
-                    }`}
-                  >
-                    <div>
-                      <span className="font-black text-sm text-[#1A2316] block">{opt.label}</span>
-                      <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{opt.desc}</span>
-                    </div>
-                    <span className="text-lg font-black text-[#1A2316]">Rs. {opt.price}</span>
-                  </button>
-                ))}
-              </div>
-
-              <button 
-                onClick={() => {
-                  handleAddToCartLocal(customizingItem, selectedPortion);
-                  setCustomizingItem(null);
-                }}
-                className="w-full bg-[#1A2316] text-[#FBBF24] py-5 rounded-[25px] font-black uppercase text-xs tracking-[0.2em] shadow-xl hover:bg-[#253120] active:scale-95 transition-all flex items-center justify-center gap-2"
-              >
-                <ShoppingCart size={16} /> Add to Cart — Rs. {selectedPortion === 'Half' ? Math.round(customizingItem.price * 0.6) : customizingItem.price}
-              </button>
-            </div>
-          </div>
-        )}
-      </AnimatePresence>
     </div>
   );
 };

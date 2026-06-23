@@ -10,6 +10,7 @@ const authMiddleware = require('../middleware/auth');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const socketHelper = require('../socket');
 
 // Ensure uploads directory exists
 const uploadDir = './uploads/';
@@ -478,6 +479,38 @@ router.delete('/recipes/:recipeId', authMiddleware, async (req, res) => {
 
     await Recipe.findByIdAndDelete(req.params.recipeId);
     res.json({ message: "Recipe deleted!" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 7. Resubmit Verification Request
+router.post('/resubmit-verification', authMiddleware, async (req, res) => {
+  try {
+    if (req.user.role !== 'chef') {
+      return res.status(403).json({ message: "Access denied: Chef only!" });
+    }
+    const chef = await User.findById(req.user.id);
+    if (!chef) return res.status(404).json({ message: "Chef not found" });
+
+    if (chef.verificationStatus !== 'rejected') {
+      return res.status(400).json({ message: "Verification request is not in rejected state" });
+    }
+
+    chef.verificationStatus = 'pending';
+    chef.isVerified = false; // Ensure still false
+    chef.rejectionReason = undefined;
+    await chef.save();
+
+    // Emit notification to admin room
+    try {
+      const io = socketHelper.getIo();
+      io.to('admin_room').emit('new_chef_registration', {
+        message: `Chef ${chef.name} has resubmitted their verification request.`
+      });
+    } catch (_) {}
+
+    res.json({ message: "Verification request resubmitted successfully!", user: chef });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

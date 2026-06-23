@@ -61,7 +61,7 @@ router.put('/:id', authMiddleware, upload.single('image'), async (req, res) => {
 
     const { 
       name, phone, address, city, img, specialty, experience, vehicle, zone, isActive,
-      kitchenName, about,
+      kitchenName, about, cnic,
       weeklyBreakfastPrice, weeklyLunchPrice, weeklyDinnerPrice,
       monthlyBreakfastPrice, monthlyLunchPrice, monthlyDinnerPrice,
       locationLat, locationLng   // ← chef kitchen coordinates
@@ -70,6 +70,7 @@ router.put('/:id', authMiddleware, upload.single('image'), async (req, res) => {
 
     if (name) updateData.name = name;
     if (phone) updateData.phone = phone;
+    if (cnic !== undefined) updateData.cnic = cnic;
     if (address !== undefined) updateData.address = address;
     if (city) updateData.city = city;
     
@@ -102,6 +103,39 @@ router.put('/:id', authMiddleware, upload.single('image'), async (req, res) => {
     if (locationLat !== undefined && locationLng !== undefined) {
       updateData['location.lat'] = parseFloat(locationLat);
       updateData['location.lng'] = parseFloat(locationLng);
+    }
+
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Reset rider verification if previously rejected and updating profile details
+    if (user.role === 'rider' && user.verificationStatus === 'rejected') {
+      updateData.verificationStatus = 'pending';
+      updateData.isVerified = false;
+      updateData.rejectionReason = null;
+      
+      try {
+        const Notification = require('../models/Notification');
+        const socketHelper = require('../socket');
+        
+        const newNotification = new Notification({
+          recipientRole: 'admin',
+          type: 'rider_pending',
+          referenceId: user._id,
+          message: `Rider ${name || user.name} has resubmitted their verification request.`
+        });
+        await newNotification.save();
+        
+        const io = socketHelper.getIo();
+        io.to('admin_room').emit('newRiderPending', {
+          riderId: user._id,
+          name: name || user.name,
+          vehicleType: vehicle || user.vehicle || 'Motorcycle',
+          createdAt: new Date()
+        });
+      } catch (e) {
+        console.error("Error creating resubmission notification:", e);
+      }
     }
 
     const updatedUser = await User.findByIdAndUpdate(

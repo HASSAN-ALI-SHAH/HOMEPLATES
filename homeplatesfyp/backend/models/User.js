@@ -30,6 +30,9 @@ const userSchema = new mongoose.Schema({
     isVerified: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },
     verificationStatus: { type: String, enum: ['pending', 'verified', 'rejected'], default: 'pending' },
+    rejectionReason: { type: String },
+    verificationReviewedAt: { type: Date, default: null },
+    verificationReviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     
     // Financial (Chef only)
     wallet: { type: Number, default: 0 },
@@ -47,12 +50,12 @@ const userSchema = new mongoose.Schema({
     isEmailVerified: { type: Boolean, default: false },
 
     // Custom Subscription Pricing (Chef only)
-    weeklyBreakfastPrice: { type: Number, default: 1000 },
-    weeklyLunchPrice: { type: Number, default: 2300 },
-    weeklyDinnerPrice: { type: Number, default: 2000 },
-    monthlyBreakfastPrice: { type: Number, default: 3800 },
-    monthlyLunchPrice: { type: Number, default: 8900 },
-    monthlyDinnerPrice: { type: Number, default: 7600 }
+    weeklyBreakfastPrice: { type: Number },
+    weeklyLunchPrice: { type: Number },
+    weeklyDinnerPrice: { type: Number },
+    monthlyBreakfastPrice: { type: Number },
+    monthlyLunchPrice: { type: Number },
+    monthlyDinnerPrice: { type: Number }
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);

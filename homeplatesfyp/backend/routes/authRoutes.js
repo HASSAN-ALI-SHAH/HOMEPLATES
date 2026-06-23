@@ -48,6 +48,32 @@ router.post('/signup', async (req, res) => {
 
     await newUser.save();
 
+    // Create Admin notification and emit socket event for Rider signup
+    if (role === 'rider') {
+      try {
+        const Notification = require('../models/Notification');
+        const socketHelper = require('../socket');
+        
+        const newNotification = new Notification({
+          recipientRole: 'admin',
+          type: 'rider_pending',
+          referenceId: newUser._id,
+          message: `New rider registered: ${name}`
+        });
+        await newNotification.save();
+
+        const io = socketHelper.getIo();
+        io.to('admin_room').emit('newRiderPending', {
+          riderId: newUser._id,
+          name: newUser.name,
+          vehicleType: 'Motorcycle',
+          createdAt: newUser.createdAt
+        });
+      } catch (err) {
+        console.error("Error creating rider pending notification/socket event:", err);
+      }
+    }
+
     // Send OTP Email
     const emailHtml = `
       <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 5px;">
@@ -62,11 +88,9 @@ router.post('/signup', async (req, res) => {
     `;
     await sendEmail(email, "HomePlates — Email Verification OTP", emailHtml);
 
-    const isDev = !process.env.EMAIL_USER || !process.env.EMAIL_PASS;
     res.status(201).json({ 
       message: "User created! OTP sent to email.", 
-      email,
-      devOtp: isDev ? otp : undefined
+      email
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -141,10 +165,8 @@ router.post('/resend-otp', async (req, res) => {
       </div>
     `;
     await sendEmail(email, "HomePlates — Resent OTP Code", emailHtml);
-    const isDev = !process.env.EMAIL_USER || !process.env.EMAIL_PASS;
     res.json({ 
-      message: "OTP resent successfully",
-      devOtp: isDev ? otp : undefined
+      message: "OTP resent successfully"
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -182,12 +204,10 @@ router.post('/login', async (req, res) => {
       `;
       await sendEmail(email, "HomePlates — Email Verification OTP", emailHtml);
 
-      const isDev = !process.env.EMAIL_USER || !process.env.EMAIL_PASS;
       return res.status(403).json({ 
         requiresOtp: true, 
         message: "Email not verified. OTP sent to your email.",
-        email,
-        devOtp: isDev ? otp : undefined
+        email
       });
     }
 

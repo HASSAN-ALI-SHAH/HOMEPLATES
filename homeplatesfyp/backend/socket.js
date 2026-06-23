@@ -31,34 +31,43 @@ module.exports = {
       socket.on('join_rider_room', async (riderId) => {
         console.log(`Rider joined room: rider_${riderId}`);
         socket.join(`rider_${riderId}`);
-        // Also join the broadcast room so rider gets notified of ALL new available orders by default
-        socket.join('riders_online');
-        console.log(`Rider ${riderId} joined riders_online broadcast room`);
+        socket.join(riderId); // direct riderId room
+        
         try {
           const rider = await User.findById(riderId);
-          if (rider && rider.city) {
-            // Leave any old city rooms to avoid cross-city notifications
-            for (const room of socket.rooms) {
-              if (room.startsWith('riders_') && room !== 'riders_online') {
-                socket.leave(room);
+          if (rider && rider.verificationStatus === 'verified') {
+            socket.join('riders_online');
+            console.log(`Rider ${riderId} joined riders_online broadcast room`);
+            if (rider.city) {
+              // Leave any old city rooms to avoid cross-city notifications
+              for (const room of socket.rooms) {
+                if (room.startsWith('riders_') && room !== 'riders_online') {
+                  socket.leave(room);
+                }
               }
+              const cityRoom = `riders_${rider.city.toLowerCase()}`;
+              socket.join(cityRoom);
+              console.log(`Rider ${riderId} joined city room: ${cityRoom}`);
             }
-            const cityRoom = `riders_${rider.city.toLowerCase()}`;
-            socket.join(cityRoom);
-            console.log(`Rider ${riderId} joined city room: ${cityRoom}`);
+          } else {
+            console.log(`Rider ${riderId} is NOT verified. Blocked from broadcast rooms.`);
           }
         } catch (e) {
-          console.error("Error joining city room for rider:", e);
+          console.error("Error joining rooms for rider:", e);
         }
       });
 
       // Rider goes online
       socket.on('go_online', async (riderId) => {
-        console.log(`Rider ${riderId} went ONLINE`);
-        socket.join('riders_online');
         try {
           const rider = await User.findById(riderId);
-          if (rider && rider.city) {
+          if (!rider || rider.verificationStatus !== 'verified') {
+            console.log(`Block unverified/offline rider ${riderId} from going online`);
+            return;
+          }
+          console.log(`Rider ${riderId} went ONLINE`);
+          socket.join('riders_online');
+          if (rider.city) {
             // Leave any old city rooms to avoid cross-city notifications
             for (const room of socket.rooms) {
               if (room.startsWith('riders_') && room !== 'riders_online') {

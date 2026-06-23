@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Users, ShoppingBag, CheckCircle, XCircle, 
   BarChart3, ShieldCheck, TrendingUp, ShieldAlert, LogOut, 
@@ -26,6 +27,31 @@ const AdminDashboard = () => {
   const [dailyDeliveries, setDailyDeliveries] = useState([]);
   const [riderMonitoring, setRiderMonitoring] = useState([]);
   const [selectedScreenshot, setSelectedScreenshot] = useState(null);
+  const [rejectChefModal, setRejectChefModal] = useState(null); // { chefId } or null
+  const [chefRejectReason, setChefRejectReason] = useState('');
+  
+  // Rider specific states
+  const [ridersList, setRidersList] = useState([]);
+  const [riderStatusFilter, setRiderStatusFilter] = useState('all');
+  const [riderWithdrawals, setRiderWithdrawals] = useState([]);
+  const [riderWithdrawalFilter, setRiderWithdrawalFilter] = useState('pending');
+  const [selectedRiderWithdrawal, setSelectedRiderWithdrawal] = useState(null);
+  const [proofFile, setProofFile] = useState(null);
+  const [payingWithdrawal, setPayingWithdrawal] = useState(false);
+  const [rejectRiderModal, setRejectRiderModal] = useState(null); // { riderId } or null
+  const [riderRejectReason, setRiderRejectReason] = useState('');
+
+  useEffect(() => {
+    if (selectedScreenshot) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [selectedScreenshot]);
+
   const [settings, setSettings] = useState({ platformFee: 10, minimumWithdrawal: 1000, deliveryRadius: 15 });
   const [stats, setStats] = useState({ totalUsers: 0, totalChefs: 0, totalOrders: 0, totalRevenue: 0, activeSubscriptions: 0, revenueByDay: [], topChefs: [] });
   const [notifications, setNotifications] = useState([]);
@@ -35,6 +61,9 @@ const AdminDashboard = () => {
   const [replyText, setReplyText] = useState({});
   const [ticketSubmitting, setTicketSubmitting] = useState({});
   const [riderVerifiedFilter, setRiderVerifiedFilter] = useState('all'); // B2: 'all' | 'verified' | 'unverified'
+  const [riderSubTab, setRiderSubTab] = useState('monitoring');
+  const [withdrawSubTab, setWithdrawSubTab] = useState('chef');
+  const [riderVerifyFilter, setRiderVerifyFilter] = useState('pending'); // 'all' | 'pending' | 'verified' | 'rejected'
 
   const addNotification = useCallback((title, body) => {
     setNotifications(prev => [
@@ -50,7 +79,7 @@ const AdminDashboard = () => {
   const fetchAllAdminData = useCallback(async () => {
     setLoading(true);
     try {
-      const [statsRes, pendingChefsRes, usersRes, withdrawalsRes, settingsRes, pendingPaymentsRes, pendingPayoutsRes, activeSubsRes, dailyDeliveriesRes, ridersRes, supportRes] = await Promise.allSettled([
+      const [statsRes, pendingChefsRes, usersRes, withdrawalsRes, settingsRes, pendingPaymentsRes, pendingPayoutsRes, activeSubsRes, dailyDeliveriesRes, ridersRes, supportRes, ridersListRes, notificationsRes, riderWithdrawalsRes] = await Promise.allSettled([
         API.get('/api/admin/analytics', authH),
         API.get('/api/admin/chefs/pending', authH),
         API.get('/api/admin/users', authH),
@@ -62,6 +91,9 @@ const AdminDashboard = () => {
         API.get('/api/admin/daily-deliveries', authH),
         API.get('/api/admin/riders', authH),
         API.get('/api/admin/support', authH),
+        API.get('/api/admin/riders/list', authH),
+        API.get('/api/admin/notifications', authH),
+        API.get('/api/admin/rider/withdrawals', authH)
       ]);
 
       if (statsRes.status === 'fulfilled') setStats(statsRes.value.data);
@@ -75,6 +107,9 @@ const AdminDashboard = () => {
       if (dailyDeliveriesRes.status === 'fulfilled') setDailyDeliveries(dailyDeliveriesRes.value.data || []);
       if (ridersRes.status === 'fulfilled') setRiderMonitoring(ridersRes.value.data || []);
       if (supportRes.status === 'fulfilled') setTickets(supportRes.value.data || []);
+      if (ridersListRes.status === 'fulfilled') setRidersList(ridersListRes.value.data || []);
+      if (notificationsRes.status === 'fulfilled') setNotifications(notificationsRes.value.data || []);
+      if (riderWithdrawalsRes.status === 'fulfilled') setRiderWithdrawals(riderWithdrawalsRes.value.data || []);
     } catch (e) {
       console.error("Error fetching admin data:", e);
     } finally {
@@ -112,10 +147,26 @@ const AdminDashboard = () => {
       toast.info(`Payout Request: ${message}`);
     });
 
+    socket.on('newRiderPending', ({ riderId, name, vehicleType, createdAt }) => {
+      fetchAllAdminData();
+      toast.info(`New Rider verification pending: ${name}`);
+    });
+
+    socket.on('newWithdrawalRequest', ({ requestId, riderId, amount }) => {
+      fetchAllAdminData();
+      toast.info(`New Rider payout request: Rs. ${amount}`);
+    });
+
     socket.on('delivery_update', ({ message }) => {
       addNotification('🍽️ Daily Delivery', message);
       fetchAllAdminData();
       toast.info(`Daily Delivery: ${message}`);
+    });
+
+    socket.on('new_chef_registration', ({ message }) => {
+      addNotification('👨‍🍳 Chef Registration', message);
+      fetchAllAdminData();
+      toast.info(`Chef Registration: ${message}`);
     });
 
     return () => {
@@ -124,10 +175,7 @@ const AdminDashboard = () => {
   }, [token, fetchAllAdminData, addNotification]);
 
   // --- CHEF VERIFICATION ACTIONS ---
-  const handleVerifyChef = async (chefId, action) => {
-    const reason = action === 'reject' ? (prompt('Reason for rejection:') || 'Documents not verified') : '';
-    if (action === 'reject' && !reason) return;
-
+  const handleVerifyChef = async (chefId, action, reason = '') => {
     try {
       await API.put(`/api/admin/verify-chef/${chefId}`, { action, reason }, authH);
       toast.success(`Chef ${action === 'approve' ? 'Approved' : 'Rejected'} successfully!`);
@@ -136,6 +184,18 @@ const AdminDashboard = () => {
       fetchAllAdminData();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Verification update failed.');
+    }
+  };
+
+  // --- RIDER VERIFICATION ACTIONS ---
+  const handleVerifyRider = async (riderId, action, reason = '') => {
+    try {
+      await API.put(`/api/admin/verify-rider/${riderId}`, { action, reason }, authH);
+      toast.success(`Rider ${action === 'approve' ? 'Approved' : 'Rejected'} successfully!`);
+      setRidersList(prev => prev.map(r => r._id === riderId ? { ...r, verificationStatus: action === 'approve' ? 'verified' : 'rejected', isVerified: action === 'approve' } : r));
+      fetchAllAdminData();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Rider verification failed.');
     }
   };
 
@@ -160,6 +220,47 @@ const AdminDashboard = () => {
       fetchAllAdminData();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Withdrawal processing failed.');
+    }
+  };
+
+  // --- PROCESS RIDER WITHDRAWALS ---
+  const handleRiderWithdrawal = async (requestId, action, adminNote = '') => {
+    try {
+      await API.patch(`/api/admin/rider/withdrawals/${requestId}`, { action, adminNote }, authH);
+      toast.success(`Rider withdrawal request has been ${action === 'approve' ? 'Approved' : 'Rejected'}.`);
+      fetchAllAdminData();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Rider withdrawal processing failed.');
+    }
+  };
+
+  const handlePayRiderWithdrawal = async (e) => {
+    e.preventDefault();
+    if (!selectedRiderWithdrawal) return;
+    if (!proofFile) {
+      toast.error('Please select a payment proof image to upload.');
+      return;
+    }
+
+    setPayingWithdrawal(true);
+    const formData = new FormData();
+    formData.append('proof', proofFile);
+
+    try {
+      await API.patch(`/api/admin/rider/withdrawals/${selectedRiderWithdrawal._id}/pay`, formData, {
+        headers: {
+          ...authH.headers,
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      toast.success('Rider payout proof uploaded and balance deducted successfully!');
+      setSelectedRiderWithdrawal(null);
+      setProofFile(null);
+      fetchAllAdminData();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to complete payout processing.');
+    } finally {
+      setPayingWithdrawal(false);
     }
   };
 
@@ -244,7 +345,9 @@ const AdminDashboard = () => {
   };
 
   // Liability calculations
-  const totalLiability = withdrawals.reduce((sum, w) => sum + w.amount, 0);
+  const chefLiability = withdrawals.reduce((sum, w) => sum + w.amount, 0);
+  const riderLiability = riderWithdrawals.filter(w => w.status === 'pending' || w.status === 'approved').reduce((sum, w) => sum + w.amount, 0);
+  const totalLiability = withdrawSubTab === 'chef' ? chefLiability : riderLiability;
 
   return (
     <div className="min-h-screen bg-[#FDFDFB] flex flex-col md:flex-row font-sans text-[#1A2316] antialiased">
@@ -330,28 +433,58 @@ const AdminDashboard = () => {
             {/* Notifications Bell */}
             <div className="relative">
               <button onClick={() => setShowNoti(!showNoti)} className="relative p-3 bg-gray-50 border border-gray-100 rounded-2xl hover:scale-105 transition-all flex items-center justify-center">
-                <Bell size={18} className={notifications.length > 0 ? 'text-[#1A2316]' : 'text-gray-400'} />
-                {notifications.length > 0 && (
+                <Bell size={18} className={notifications.filter(n => !n.isRead).length > 0 ? 'text-[#1A2316]' : 'text-gray-400'} />
+                {notifications.filter(n => !n.isRead).length > 0 && (
                   <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-black w-5 h-5 rounded-full flex items-center justify-center border-2 border-white">
-                    {notifications.length > 9 ? '9+' : notifications.length}
+                    {notifications.filter(n => !n.isRead).length > 9 ? '9+' : notifications.filter(n => !n.isRead).length}
                   </span>
                 )}
               </button>
 
               {showNoti && (
-                <div className="absolute right-0 mt-4 w-80 bg-white rounded-[28px] shadow-2xl border border-gray-100 overflow-hidden z-[100]">
+                <div className="absolute right-0 mt-4 w-85 bg-white rounded-[28px] shadow-2xl border border-gray-100 overflow-hidden z-[100]">
                   <div className="p-5 border-b border-gray-50 flex justify-between items-center bg-[#1A2316]">
-                    <h5 className="text-white font-black uppercase text-[10px] tracking-widest">Alerts ({notifications.length})</h5>
-                    <button onClick={() => setNotifications([])} className="text-[#FBBF24] text-[8px] font-black uppercase underline">Clear All</button>
+                    <h5 className="text-white font-black uppercase text-[10px] tracking-widest">Alerts ({notifications.filter(n => !n.isRead).length})</h5>
+                    <button 
+                      onClick={async () => {
+                        try {
+                          const unreads = notifications.filter(n => !n.isRead);
+                          await Promise.all(unreads.map(n => API.patch(`/api/admin/notifications/${n._id}/read`, {}, authH)));
+                          fetchAllAdminData();
+                        } catch (_) {}
+                      }} 
+                      className="text-[#FBBF24] text-[8px] font-black uppercase underline"
+                    >
+                      Mark All Read
+                    </button>
                   </div>
                   <div className="max-h-[350px] overflow-y-auto divide-y divide-gray-50">
                     {notifications.length > 0 ? notifications.map(n => (
-                      <div key={n.id} className="p-5 hover:bg-gray-50 transition-all text-left">
-                        <div className="flex justify-between mb-1">
-                          <span className="text-[10px] font-black uppercase italic text-[#1A2316]">{n.title}</span>
-                          <span className="text-[8px] font-bold text-gray-400">{n.time}</span>
+                      <div key={n._id} className={`p-5 transition-all text-left flex justify-between items-start gap-4 ${n.isRead ? 'opacity-65 bg-gray-50/50' : 'bg-white'}`}>
+                        <div className="min-w-0">
+                          <div className="flex justify-between mb-1">
+                            <span className="text-[9px] font-black uppercase tracking-wider text-[#1A2316]">
+                              {n.type === 'rider_pending' ? '🚴 Rider Registration' : '💸 Payout Request'}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-gray-500 font-bold leading-normal">{n.message}</p>
+                          <span className="text-[8px] text-gray-400 block mt-1">
+                            {new Date(n.createdAt).toLocaleString('en-PK')}
+                          </span>
                         </div>
-                        <p className="text-[10px] text-gray-500 font-medium">{n.body}</p>
+                        {!n.isRead && (
+                          <button 
+                            onClick={async () => {
+                              try {
+                                await API.patch(`/api/admin/notifications/${n._id}/read`, {}, authH);
+                                fetchAllAdminData();
+                              } catch (_) {}
+                            }}
+                            className="text-[#FBBF24] hover:underline font-black text-[9px] uppercase shrink-0"
+                          >
+                            Read
+                          </button>
+                        )}
                       </div>
                     )) : (
                       <div className="p-10 text-center text-gray-300 font-black uppercase text-[10px]">No alerts yet</div>
@@ -475,7 +608,7 @@ const AdminDashboard = () => {
                         </div>
                         <div className="flex gap-3 mt-6">
                           <button onClick={() => handleVerifyChef(chef._id, 'approve')} className="flex-1 bg-green-500 hover:bg-green-600 text-white py-3 rounded-2xl font-black uppercase text-[10px] tracking-wider transition-all">Approve Chef</button>
-                          <button onClick={() => handleVerifyChef(chef._id, 'reject')} className="flex-1 bg-red-50 hover:bg-red-100 text-red-600 py-3 rounded-2xl font-black uppercase text-[10px] tracking-wider transition-all">Reject Request</button>
+                          <button onClick={() => setRejectChefModal({ chefId: chef._id })} className="flex-1 bg-red-50 hover:bg-red-100 text-red-600 py-3 rounded-2xl font-black uppercase text-[10px] tracking-wider transition-all">Reject Request</button>
                         </div>
                       </div>
                     ))}
@@ -610,142 +743,286 @@ const AdminDashboard = () => {
                   <p className="text-xs font-bold text-gray-300">Logistics and Delivery Rider Fleet Monitoring. View rider status, city location, active/accepted deliveries, ignored requests, and chronological status change logs.</p>
                 </div>
 
-                {/* B2: Verified filter tabs */}
-                <div className="flex gap-3">
-                  {[{ label: 'All Riders', value: 'all' }, { label: 'Verified', value: 'verified' }, { label: 'Unverified', value: 'unverified' }].map(f => (
-                    <button
-                      key={f.value}
-                      onClick={() => setRiderVerifiedFilter(f.value)}
-                      className={`px-5 py-2.5 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${
-                        riderVerifiedFilter === f.value
-                          ? 'bg-[#1A2316] text-[#FBBF24] shadow-md'
-                          : 'bg-white border border-gray-100 text-gray-500 hover:bg-gray-50'
-                      }`}
+                {/* Nested sub-tabs */}
+                <div className="flex flex-wrap gap-4 border-b border-gray-100 pb-3 mb-6">
+                  {[
+                    { key: 'monitoring', label: 'Rider Monitoring' },
+                    { key: 'verifications', label: `Rider Verifications (${ridersList.filter(r => r.verificationStatus === 'pending').length})` }
+                  ].map((sub) => (
+                    <button 
+                      key={sub.key}
+                      onClick={() => setRiderSubTab(sub.key)} 
+                      className={`pb-2 font-black uppercase text-[10px] tracking-wider transition-all relative ${riderSubTab === sub.key ? 'text-[#1A2316] border-b-2 border-[#FBBF24]' : 'text-gray-400 hover:text-gray-600'}`}
                     >
-                      {f.label}
+                      {sub.label}
                     </button>
                   ))}
                 </div>
 
-                {/* B2: Filter by verified status */}
-                {riderMonitoring.filter(log => {
-                  if (riderVerifiedFilter === 'verified') return log.rider.isVerified === true;
-                  if (riderVerifiedFilter === 'unverified') return log.rider.isVerified !== true;
-                  return true;
-                }).length === 0 ? (
-                  <div className="bg-white p-20 rounded-[40px] border border-gray-100 flex flex-col items-center justify-center text-center text-gray-300">
-                    <Bike size={48} className="opacity-20 mb-4" />
-                    <p className="font-black uppercase text-xs tracking-widest text-gray-400">
-                      {riderMonitoring.length === 0 ? 'No riders registered in system yet' : 'No riders match this filter'}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 gap-6">
+                {riderSubTab === 'monitoring' && (
+                  <div className="space-y-6">
+                    {/* B2: Verified filter tabs */}
+                    <div className="flex gap-3">
+                      {[{ label: 'All Riders', value: 'all' }, { label: 'Verified', value: 'verified' }, { label: 'Unverified', value: 'unverified' }].map(f => (
+                        <button
+                          key={f.value}
+                          onClick={() => setRiderVerifiedFilter(f.value)}
+                          className={`px-5 py-2.5 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${
+                            riderVerifiedFilter === f.value
+                              ? 'bg-[#1A2316] text-[#FBBF24] shadow-md'
+                              : 'bg-white border border-gray-100 text-gray-500 hover:bg-gray-50'
+                          }`}
+                        >
+                          {f.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* B2: Filter by verified status */}
                     {riderMonitoring.filter(log => {
-                    if (riderVerifiedFilter === 'verified') return log.rider.isVerified === true;
-                    if (riderVerifiedFilter === 'unverified') return log.rider.isVerified !== true;
-                    return true;
-                  }).map(log => {
-                      const rider = log.rider;
-                      return (
-                        <div key={rider._id} className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm space-y-6 text-left">
-                          {/* Top Section: Rider Details */}
-                          <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-gray-100 pb-5 gap-4">
-                            <div className="flex gap-4 items-center">
-                              <div className="w-16 h-16 rounded-[20px] bg-[#1A2316] flex items-center justify-center font-black text-[#FBBF24] text-xl overflow-hidden border-2 border-[#FBBF24]">
-                                <Bike size={28} />
-                              </div>
-                              <div>
-                                <h4 className="font-black text-lg text-[#1A2316] uppercase">{rider.name}</h4>
-                                <p className="text-xs text-gray-400">Email: {rider.email} · Phone: {rider.phone}</p>
-                                <p className="text-[10px] text-gray-400 mt-1">Vehicle: <strong className="text-gray-600">{rider.vehicle}</strong></p>
-                              </div>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              <span className="bg-blue-50 text-blue-700 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider">City: {rider.city}</span>
-                              <span className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider ${rider.isActive ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-                                {rider.isActive ? 'Active Duty' : 'Suspended'}
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Stats cards for rider */}
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div className="bg-[#F4F7F2] p-5 rounded-2xl border border-gray-50">
-                              <p className="text-[9px] font-black uppercase text-gray-400">Currently Assigned (Active)</p>
-                              <p className="text-2xl font-black text-[#1A2316] mt-1">{log.assignedOrders.length} Order(s)</p>
-                            </div>
-                            <div className="bg-[#FEF9ED] p-5 rounded-2xl border border-gray-50">
-                              <p className="text-[9px] font-black uppercase text-gray-400">Total Accepted Deliveries</p>
-                              <p className="text-2xl font-black text-[#1A2316] mt-1">{log.acceptedOrders.length} Order(s)</p>
-                            </div>
-                            <div className="bg-red-50/50 p-5 rounded-2xl border border-gray-50">
-                              <p className="text-[9px] font-black uppercase text-gray-400">Ignored Requests</p>
-                              <p className="text-2xl font-black text-red-600 mt-1">{log.ignoredOrders.length} Time(s)</p>
-                            </div>
-                          </div>
-
-                          {/* Lists: Active Orders, Ignored Requests, History Log */}
-                          <div className="space-y-4">
-                            {/* Assigned Orders Details */}
-                            {log.assignedOrders.length > 0 && (
-                              <div className="border border-gray-100 rounded-2xl p-5">
-                                <h5 className="font-black text-xs uppercase tracking-widest text-[#1A2316] mb-3">📍 Active Assignment Details</h5>
-                                <div className="space-y-2">
-                                  {log.assignedOrders.map(order => (
-                                    <div key={order._id} className="flex justify-between items-center text-xs py-2 border-b border-gray-50 last:border-0">
-                                      <div>
-                                        <p className="font-bold text-gray-700">Order ID: #{order._id.toString().slice(-6)} ({order.status})</p>
-                                        <p className="text-[10px] text-gray-400">Chef: {order.chef?.kitchenName || order.chef?.name} → Customer: {order.user?.name}</p>
-                                      </div>
-                                      <span className="font-mono font-bold text-gray-500">PKR {order.totalAmount}</span>
-                                    </div>
-                                  ))}
+                      if (riderVerifiedFilter === 'verified') return log.rider.isVerified === true;
+                      if (riderVerifiedFilter === 'unverified') return log.rider.isVerified !== true;
+                      return true;
+                    }).length === 0 ? (
+                      <div className="bg-white p-20 rounded-[40px] border border-gray-100 flex flex-col items-center justify-center text-center text-gray-300">
+                        <Bike size={48} className="opacity-20 mb-4" />
+                        <p className="font-black uppercase text-xs tracking-widest text-gray-400">
+                          {riderMonitoring.length === 0 ? 'No riders registered in system yet' : 'No riders match this filter'}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-6">
+                        {riderMonitoring.filter(log => {
+                          if (riderVerifiedFilter === 'verified') return log.rider.isVerified === true;
+                          if (riderVerifiedFilter === 'unverified') return log.rider.isVerified !== true;
+                          return true;
+                        }).map(log => {
+                          const rider = log.rider;
+                          return (
+                            <div key={rider._id} className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm space-y-6 text-left">
+                              {/* Top Section: Rider Details */}
+                              <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-gray-100 pb-5 gap-4">
+                                <div className="flex gap-4 items-center">
+                                  <div className="w-16 h-16 rounded-[20px] bg-[#1A2316] flex items-center justify-center font-black text-[#FBBF24] text-xl overflow-hidden border-2 border-[#FBBF24]">
+                                    <Bike size={28} />
+                                  </div>
+                                  <div>
+                                    <h4 className="font-black text-lg text-[#1A2316] uppercase">{rider.name}</h4>
+                                    <p className="text-xs text-gray-400">Email: {rider.email} · Phone: {rider.phone}</p>
+                                    <p className="text-[10px] text-gray-400 mt-1">Vehicle: <strong className="text-gray-600">{rider.vehicle}</strong></p>
+                                  </div>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  <span className="bg-blue-50 text-blue-700 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider">City: {rider.city}</span>
+                                  <span className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider ${rider.isActive ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                                    {rider.isActive ? 'Active Duty' : 'Suspended'}
+                                  </span>
                                 </div>
                               </div>
-                            )}
 
-                            {/* Ignored Requests Details */}
-                            {log.ignoredOrders.length > 0 && (
-                              <div className="border border-gray-100 rounded-2xl p-5 bg-red-50/10">
-                                <h5 className="font-black text-xs uppercase tracking-widest text-red-700 mb-3">🚫 Ignored Orders List</h5>
-                                <div className="max-h-36 overflow-y-auto space-y-2">
-                                  {log.ignoredOrders.map(order => (
-                                    <div key={order._id} className="flex justify-between items-center text-xs py-2 border-b border-gray-50 last:border-0">
-                                      <div>
-                                        <p className="font-bold text-gray-700">Order ID: #{order._id.toString().slice(-6)}</p>
-                                        <p className="text-[10px] text-gray-400">Chef: {order.chef?.kitchenName || order.chef?.name} → Customer: {order.user?.name}</p>
-                                      </div>
-                                      <span className="text-gray-400 text-[10px]">{new Date(order.updatedAt).toLocaleDateString('en-PK')}</span>
-                                    </div>
-                                  ))}
+                              {/* Stats cards for rider */}
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="bg-[#F4F7F2] p-5 rounded-2xl border border-gray-50">
+                                  <p className="text-[9px] font-black uppercase text-gray-400">Currently Assigned (Active)</p>
+                                  <p className="text-2xl font-black text-[#1A2316] mt-1">{log.assignedOrders.length} Order(s)</p>
+                                </div>
+                                <div className="bg-[#FEF9ED] p-5 rounded-2xl border border-gray-50">
+                                  <p className="text-[9px] font-black uppercase text-gray-400">Total Accepted Deliveries</p>
+                                  <p className="text-2xl font-black text-[#1A2316] mt-1">{log.acceptedOrders.length} Order(s)</p>
+                                </div>
+                                <div className="bg-red-50/50 p-5 rounded-2xl border border-gray-50">
+                                  <p className="text-[9px] font-black uppercase text-gray-400">Ignored Requests</p>
+                                  <p className="text-2xl font-black text-red-600 mt-1">{log.ignoredOrders.length} Time(s)</p>
                                 </div>
                               </div>
-                            )}
 
-                            {/* Delivery Status History Log */}
-                            <div className="border border-gray-100 rounded-2xl p-5 bg-slate-50/50">
-                              <h5 className="font-black text-xs uppercase tracking-widest text-slate-700 mb-3">📜 Delivery Status History</h5>
-                              {log.historyLog.length === 0 ? (
-                                <p className="text-xs text-gray-400 italic">No status change history recorded yet.</p>
-                              ) : (
-                                <div className="max-h-48 overflow-y-auto divide-y divide-gray-100">
-                                  {log.historyLog.map((hist, idx) => (
-                                    <div key={idx} className="flex justify-between items-center text-xs py-3">
-                                      <div>
-                                        <p className="font-bold text-gray-700">Marked Order #{hist.orderId.toString().slice(-6)} as <strong className="text-[#1A2316] uppercase">{hist.status}</strong></p>
-                                        <p className="text-[10px] text-gray-400">From Chef {hist.chefName} to Customer {hist.customerName}</p>
-                                      </div>
-                                      <span className="text-gray-400 text-[10px]">{new Date(hist.timestamp).toLocaleString('en-PK')}</span>
+                              {/* Lists: Active Orders, Ignored Requests, History Log */}
+                              <div className="space-y-4">
+                                {/* Assigned Orders Details */}
+                                {log.assignedOrders.length > 0 && (
+                                  <div className="border border-gray-100 rounded-2xl p-5">
+                                    <h5 className="font-black text-xs uppercase tracking-widest text-[#1A2316] mb-3">📍 Active Assignment Details</h5>
+                                    <div className="space-y-2">
+                                      {log.assignedOrders.map(order => (
+                                        <div key={order._id} className="flex justify-between items-center text-xs py-2 border-b border-gray-50 last:border-0">
+                                          <div>
+                                            <p className="font-bold text-gray-700">Order ID: #{order._id.toString().slice(-6)} ({order.status})</p>
+                                            <p className="text-[10px] text-gray-400">Chef: {order.chef?.kitchenName || order.chef?.name} → Customer: {order.user?.name}</p>
+                                          </div>
+                                          <span className="font-mono font-bold text-gray-500">PKR {order.totalAmount}</span>
+                                        </div>
+                                      ))}
                                     </div>
-                                  ))}
+                                  </div>
+                                )}
+
+                                {/* Ignored Requests Details */}
+                                {log.ignoredOrders.length > 0 && (
+                                  <div className="border border-gray-100 rounded-2xl p-5 bg-red-50/10">
+                                    <h5 className="font-black text-xs uppercase tracking-widest text-red-700 mb-3">🚫 Ignored Orders List</h5>
+                                    <div className="max-h-36 overflow-y-auto space-y-2">
+                                      {log.ignoredOrders.map(order => (
+                                        <div key={order._id} className="flex justify-between items-center text-xs py-2 border-b border-gray-50 last:border-0">
+                                          <div>
+                                            <p className="font-bold text-gray-700">Order ID: #{order._id.toString().slice(-6)}</p>
+                                            <p className="text-[10px] text-gray-400">Chef: {order.chef?.kitchenName || order.chef?.name} → Customer: {order.user?.name}</p>
+                                          </div>
+                                          <span className="text-gray-400 text-[10px]">{new Date(order.updatedAt).toLocaleDateString('en-PK')}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Delivery Status History Log */}
+                                <div className="border border-gray-100 rounded-2xl p-5 bg-slate-50/50">
+                                  <h5 className="font-black text-xs uppercase tracking-widest text-slate-700 mb-3">📜 Delivery Status History</h5>
+                                  {log.historyLog.length === 0 ? (
+                                    <p className="text-xs text-gray-400 italic">No status change history recorded yet.</p>
+                                  ) : (
+                                    <div className="max-h-48 overflow-y-auto divide-y divide-gray-100">
+                                      {log.historyLog.map((hist, idx) => (
+                                        <div key={idx} className="flex justify-between items-center text-xs py-3">
+                                          <div>
+                                            <p className="font-bold text-gray-700">Marked Order #{hist.orderId.toString().slice(-6)} as <strong className="text-[#1A2316] uppercase">{hist.status}</strong></p>
+                                            <p className="text-[10px] text-gray-400">From Chef {hist.chefName} to Customer {hist.customerName}</p>
+                                          </div>
+                                          <span className="text-gray-400 text-[10px]">{new Date(hist.timestamp).toLocaleString('en-PK')}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
-                              )}
+                              </div>
                             </div>
-                          </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {riderSubTab === 'verifications' && (
+                  <div className="space-y-6">
+                    {/* Verification status filters */}
+                    <div className="flex gap-3">
+                      {[{ label: 'Pending Requests', value: 'pending' }, { label: 'Verified Riders', value: 'verified' }, { label: 'Rejected Applications', value: 'rejected' }, { label: 'All Registered Riders', value: 'all' }].map(f => (
+                        <button
+                          key={f.value}
+                          onClick={() => setRiderVerifyFilter(f.value)}
+                          className={`px-5 py-2.5 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${
+                            riderVerifyFilter === f.value
+                              ? 'bg-[#1A2316] text-[#FBBF24] shadow-md'
+                              : 'bg-white border border-gray-100 text-gray-500 hover:bg-gray-50'
+                          }`}
+                        >
+                          {f.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Verifications table */}
+                    {ridersList.filter(r => {
+                      if (riderVerifyFilter === 'all') return true;
+                      return (r.verificationStatus || 'pending') === riderVerifyFilter;
+                    }).length === 0 ? (
+                      <div className="bg-white p-20 rounded-[40px] border border-gray-100 flex flex-col items-center justify-center text-center text-gray-300">
+                        <UserCheck size={48} className="opacity-20 mb-4" />
+                        <p className="font-black uppercase text-xs tracking-widest text-gray-400">No riders match this filter</p>
+                      </div>
+                    ) : (
+                      <div className="bg-white rounded-[45px] border border-gray-100 overflow-hidden shadow-sm">
+                        <div className="overflow-x-auto p-6">
+                          <table className="w-full text-left border-collapse">
+                            <thead>
+                              <tr className="border-b border-gray-100 text-[10px] font-black uppercase text-gray-400 tracking-wider">
+                                <th className="p-4">Rider</th>
+                                <th className="p-4">CNIC Document</th>
+                                <th className="p-4">City / Zone</th>
+                                <th className="p-4">Vehicle Details</th>
+                                <th className="p-4">Verification Status</th>
+                                <th className="p-4 text-right">Review Action</th>
+                              </tr>
+                            </thead>
+                            <tbody className="text-sm font-bold">
+                              {ridersList.filter(r => {
+                                if (riderVerifyFilter === 'all') return true;
+                                return (r.verificationStatus || 'pending') === riderVerifyFilter;
+                              }).map(r => (
+                                <tr key={r._id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-all">
+                                  <td className="p-4">
+                                    <div className="flex gap-3 items-center">
+                                      <div className="w-10 h-10 rounded-[12px] bg-[#1A2316] flex items-center justify-center font-black text-[#FBBF24] overflow-hidden">
+                                        {r.img ? (
+                                          <img src={`${window.API_URL}${r.img}`} className="w-full h-full object-cover" alt="" />
+                                        ) : (
+                                          r.name.charAt(0).toUpperCase()
+                                        )}
+                                      </div>
+                                      <div>
+                                        <p className="font-black text-[#1A2316] uppercase">{r.name}</p>
+                                        <p className="text-[10px] text-gray-400 font-bold">{r.email} · {r.phone}</p>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="p-4 font-mono text-xs text-gray-600">{r.cnic || 'Not provided'}</td>
+                                  <td className="p-4 uppercase text-xs text-[#1A2316]">
+                                    {r.city} {r.zone && <span className="text-gray-400">({r.zone})</span>}
+                                  </td>
+                                  <td className="p-4 text-xs font-black text-gray-600 uppercase">{r.vehicle || 'None'}</td>
+                                  <td className="p-4">
+                                    <span className={`text-[9px] font-black uppercase px-2.5 py-1 rounded-full ${
+                                      r.verificationStatus === 'verified' ? 'bg-green-50 text-green-700' :
+                                      r.verificationStatus === 'rejected' ? 'bg-red-50 text-red-600' :
+                                      'bg-yellow-50 text-yellow-700 animate-pulse'
+                                    }`}>
+                                      {r.verificationStatus || 'pending'}
+                                    </span>
+                                    {r.verificationStatus === 'rejected' && r.rejectionReason && (
+                                      <p className="text-[9px] text-red-500 font-bold mt-1">Reason: {r.rejectionReason}</p>
+                                    )}
+                                  </td>
+                                  <td className="p-4 text-right">
+                                    {r.verificationStatus === 'pending' && (
+                                      <div className="flex gap-2 justify-end">
+                                        <button 
+                                          onClick={() => handleVerifyRider(r._id, 'approve')}
+                                          className="text-[9px] font-black uppercase px-3 py-1.5 rounded-xl border border-green-200 text-green-600 bg-green-50/20 hover:bg-green-500 hover:text-white transition-all"
+                                        >
+                                          Approve
+                                        </button>
+                                        <button 
+                                          onClick={() => setRejectRiderModal({ riderId: r._id })}
+                                          className="text-[9px] font-black uppercase px-3 py-1.5 rounded-xl border border-red-200 text-red-600 bg-red-50/20 hover:bg-red-500 hover:text-white transition-all"
+                                        >
+                                          Reject
+                                        </button>
+                                      </div>
+                                    )}
+                                    {r.verificationStatus === 'verified' && (
+                                      <button 
+                                        onClick={() => handleVerifyRider(r._id, 'reject', 'Re-evaluation by administrator')}
+                                        className="text-[9px] font-black uppercase px-3 py-1.5 rounded-xl border border-red-100 text-red-500 hover:bg-red-50 transition-all"
+                                      >
+                                        Revoke Status
+                                      </button>
+                                    )}
+                                    {r.verificationStatus === 'rejected' && (
+                                      <button 
+                                        onClick={() => handleVerifyRider(r._id, 'approve')}
+                                        className="text-[9px] font-black uppercase px-3 py-1.5 rounded-xl border border-green-100 text-green-600 hover:bg-green-50 transition-all"
+                                      >
+                                        Force Approve
+                                      </button>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
-                      );
-                    })}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -759,34 +1036,192 @@ const AdminDashboard = () => {
                   <h3 className="text-6xl font-black italic tracking-tighter">PKR {totalLiability.toLocaleString()}</h3>
                 </div>
 
-                {withdrawals.length === 0 ? (
-                  <div className="bg-white p-20 rounded-[40px] border border-gray-100 flex flex-col items-center justify-center text-center text-gray-300 shadow-sm">
-                    <CreditCard size={48} className="opacity-20 mb-4" />
-                    <p className="font-black uppercase text-xs text-gray-400 tracking-widest">Withdrawal processing log: clear</p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 gap-4">
-                    {withdrawals.map((req) => (
-                      <div key={req._id} className="bg-white p-8 rounded-[35px] border border-gray-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
-                        <div>
-                          <p className="font-black text-lg uppercase text-[#1A2316]">{req.chefId?.name || 'Chef'}</p>
-                          <p className="text-xs text-gray-400">{req.chefId?.email || 'Email'}</p>
-                          <div className="mt-3 flex gap-4 text-xs font-bold text-gray-500 uppercase">
-                            <span>Method: <strong className="text-[#1A2316]">{req.paymentMethod}</strong></span>
-                            <span>Details: <strong className="text-[#1A2316]">{req.accountDetails}</strong></span>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <p className="text-xl font-black mr-4 text-[#1A2316]">PKR {req.amount}</p>
-                          <button onClick={() => handleWithdrawal(req._id, 'approve')} className="p-3 bg-green-50 text-green-600 rounded-2xl hover:scale-105 transition-all" title="Approve Request">
-                            <CheckCircle size={20} />
-                          </button>
-                          <button onClick={() => handleWithdrawal(req._id, 'reject')} className="p-3 bg-red-50 text-red-500 rounded-2xl hover:scale-105 transition-all" title="Reject Request">
-                            <XCircle size={20} />
-                          </button>
-                        </div>
+                {/* Nested sub-tabs */}
+                <div className="flex flex-wrap gap-4 border-b border-gray-100 pb-3 mb-6">
+                  {[
+                    { key: 'chef', label: `Chef Payouts (${withdrawals.length})` },
+                    { key: 'rider', label: `Rider Payouts (${riderWithdrawals.filter(w => w.status === 'pending' || w.status === 'approved').length})` }
+                  ].map((sub) => (
+                    <button 
+                      key={sub.key}
+                      onClick={() => setWithdrawSubTab(sub.key)} 
+                      className={`pb-2 font-black uppercase text-[10px] tracking-wider transition-all relative ${withdrawSubTab === sub.key ? 'text-[#1A2316] border-b-2 border-[#FBBF24]' : 'text-gray-400 hover:text-gray-600'}`}
+                    >
+                      {sub.label}
+                    </button>
+                  ))}
+                </div>
+
+                {withdrawSubTab === 'chef' && (
+                  <>
+                    {withdrawals.length === 0 ? (
+                      <div className="bg-white p-20 rounded-[40px] border border-gray-100 flex flex-col items-center justify-center text-center text-gray-300 shadow-sm">
+                        <CreditCard size={48} className="opacity-20 mb-4" />
+                        <p className="font-black uppercase text-xs text-gray-400 tracking-widest">Withdrawal processing log: clear</p>
                       </div>
-                    ))}
+                    ) : (
+                      <div className="grid grid-cols-1 gap-4">
+                        {withdrawals.map((req) => (
+                          <div key={req._id} className="bg-white p-8 rounded-[35px] border border-gray-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
+                            <div>
+                              <p className="font-black text-lg uppercase text-[#1A2316]">{req.chefId?.name || 'Chef'}</p>
+                              <p className="text-xs text-gray-400">{req.chefId?.email || 'Email'}</p>
+                              <div className="mt-3 flex gap-4 text-xs font-bold text-gray-500 uppercase">
+                                <span>Method: <strong className="text-[#1A2316]">{req.paymentMethod}</strong></span>
+                                <span>Details: <strong className="text-[#1A2316]">{req.accountDetails}</strong></span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <p className="text-xl font-black mr-4 text-[#1A2316]">PKR {req.amount}</p>
+                              <button onClick={() => handleWithdrawal(req._id, 'approve')} className="p-3 bg-green-50 text-green-600 rounded-2xl hover:scale-105 transition-all" title="Approve Request">
+                                <CheckCircle size={20} />
+                              </button>
+                              <button onClick={() => handleWithdrawal(req._id, 'reject')} className="p-3 bg-red-50 text-red-500 rounded-2xl hover:scale-105 transition-all" title="Reject Request">
+                                <XCircle size={20} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {withdrawSubTab === 'rider' && (
+                  <div className="space-y-6">
+                    {/* Status filters */}
+                    <div className="flex gap-3 mb-6">
+                      {[{ label: 'Pending Review', value: 'pending' }, { label: 'Approved — Pending Payment', value: 'approved' }, { label: 'Paid Requests', value: 'paid' }, { label: 'Rejected', value: 'rejected' }, { label: 'All Requests', value: 'all' }].map(f => (
+                        <button
+                          key={f.value}
+                          onClick={() => setRiderWithdrawalFilter(f.value)}
+                          className={`px-5 py-2.5 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${
+                            riderWithdrawalFilter === f.value
+                              ? 'bg-[#1A2316] text-[#FBBF24] shadow-md'
+                              : 'bg-white border border-gray-100 text-gray-500 hover:bg-gray-50'
+                          }`}
+                        >
+                          {f.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {riderWithdrawals.filter(w => {
+                      if (riderWithdrawalFilter === 'all') return true;
+                      return w.status === riderWithdrawalFilter;
+                    }).length === 0 ? (
+                      <div className="bg-white p-20 rounded-[40px] border border-gray-100 flex flex-col items-center justify-center text-center text-gray-300 shadow-sm">
+                        <CreditCard size={48} className="opacity-20 mb-4" />
+                        <p className="font-black uppercase text-xs text-gray-400 tracking-widest">No rider payouts found in this category</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-6">
+                        {riderWithdrawals.filter(w => {
+                          if (riderWithdrawalFilter === 'all') return true;
+                          return w.status === riderWithdrawalFilter;
+                        }).map((req) => (
+                          <div key={req._id} className="bg-white p-8 rounded-[35px] border border-gray-100 shadow-sm flex flex-col justify-between">
+                            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-gray-50 pb-5">
+                              <div>
+                                <p className="font-black text-lg uppercase text-[#1A2316]">{req.rider?.name || 'Rider'}</p>
+                                <p className="text-xs text-gray-400">{req.rider?.email || 'Email'} · {req.rider?.phone || 'Phone'}</p>
+                                <p className="text-[10px] text-gray-500 font-bold mt-1">
+                                  Rider Current Wallet: <strong className="text-[#1A2316]">PKR {req.rider?.wallet || 0}</strong>
+                                </p>
+                                <p className="text-[10px] text-gray-400 mt-0.5">Requested on: {new Date(req.requestedAt).toLocaleString('en-PK')}</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-2xl font-black text-[#1A2316]">PKR {req.amount}</p>
+                                <span className={`inline-block px-2.5 py-1 rounded-full text-[9px] font-black uppercase mt-1 ${
+                                  req.status === 'paid' ? 'bg-green-100 text-green-700' :
+                                  req.status === 'approved' ? 'bg-blue-100 text-blue-700 animate-pulse' :
+                                  req.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                                  'bg-yellow-100 text-yellow-700'
+                                }`}>
+                                  {req.status}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Details on Bank/Payment Account */}
+                            <div className="py-4 text-xs font-bold text-gray-500 uppercase flex flex-col gap-1">
+                              <div>Method: <strong className="text-[#1A2316]">{req.paymentMethod || 'Bank Transfer'}</strong></div>
+                              <div>Account Details: <strong className="text-[#1A2316] font-mono">{req.accountDetails || 'N/A'}</strong></div>
+                              {req.adminNote && (
+                                <div className="mt-2 text-red-600 font-sans">Reason / Note: <strong>{req.adminNote}</strong></div>
+                              )}
+                            </div>
+
+                            {/* Phase 1 Actions: Approve / Reject (only if status is pending) */}
+                            {req.status === 'pending' && (
+                              <div className="flex gap-3 mt-4">
+                                <button 
+                                  onClick={() => handleRiderWithdrawal(req._id, 'approve')} 
+                                  className="flex-1 bg-green-500 hover:bg-green-600 text-white py-3 rounded-2xl font-black uppercase text-[10px] tracking-wider transition-all flex items-center justify-center gap-2"
+                                >
+                                  <CheckCircle size={14} /> Approve Request
+                                </button>
+                                <button 
+                                  onClick={() => {
+                                    const reason = window.prompt("Enter rejection note/reason:");
+                                    if (reason !== null) {
+                                      handleRiderWithdrawal(req._id, 'reject', reason);
+                                    }
+                                  }} 
+                                  className="flex-1 bg-red-50 hover:bg-red-100 text-red-600 py-3 rounded-2xl font-black uppercase text-[10px] tracking-wider transition-all flex items-center justify-center gap-2"
+                                >
+                                  <XCircle size={14} /> Reject Request
+                                </button>
+                              </div>
+                            )}
+
+                            {/* Phase 2: File Upload for Approved Requests */}
+                            {req.status === 'approved' && (
+                              <div className="mt-4 p-5 bg-gray-50 rounded-3xl border border-gray-100 flex flex-col gap-3">
+                                <p className="text-[10px] font-black uppercase text-gray-400">Payment Upload Receipt Proof</p>
+                                <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+                                  <input 
+                                    type="file" 
+                                    accept="image/*"
+                                    onChange={(e) => {
+                                      setSelectedRiderWithdrawal(req);
+                                      setProofFile(e.target.files[0]);
+                                    }}
+                                    className="text-xs file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-[10px] file:font-black file:uppercase file:bg-[#1A2316] file:text-[#FBBF24] hover:file:bg-[#253220] cursor-pointer"
+                                  />
+                                  {selectedRiderWithdrawal?._id === req._id && proofFile && (
+                                    <button 
+                                      onClick={handlePayRiderWithdrawal}
+                                      disabled={payingWithdrawal}
+                                      className="px-5 py-2.5 bg-green-500 hover:bg-green-600 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all disabled:opacity-50 flex items-center gap-2"
+                                    >
+                                      {payingWithdrawal ? (
+                                        <>
+                                          <Loader2 className="animate-spin" size={12} /> Uploading...
+                                        </>
+                                      ) : 'Submit Payment Proof'}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Show Payment Proof Image if Paid */}
+                            {req.status === 'paid' && req.proofImage && (
+                              <div className="mt-4 pt-4 border-t border-dashed border-gray-100 flex items-center justify-between">
+                                <span className="text-[10px] text-gray-400 font-bold">Processed at: {req.processedAt ? new Date(req.processedAt).toLocaleString('en-PK') : 'N/A'}</span>
+                                <button 
+                                  onClick={() => setSelectedScreenshot(`${window.API_URL}${req.proofImage}`)}
+                                  className="text-[#FBBF24] hover:underline text-[10px] font-black uppercase flex items-center gap-1"
+                                >
+                                  👁️ View Payment Receipt
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1148,13 +1583,90 @@ const AdminDashboard = () => {
       </main>
 
       {/* Lightbox screenshot modal */}
-      {selectedScreenshot && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={() => setSelectedScreenshot(null)}>
-          <div className="relative max-w-3xl w-full max-h-[90vh] flex flex-col justify-center items-center">
-            <button onClick={() => setSelectedScreenshot(null)} className="absolute -top-12 right-0 text-white font-black text-xl hover:text-[#FBBF24]">Close ✕</button>
+      {selectedScreenshot && createPortal(
+        <div className="fixed inset-0 z-[100000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={() => setSelectedScreenshot(null)}>
+          <div className="relative max-w-3xl w-full max-h-[90vh] flex flex-col justify-center items-center" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setSelectedScreenshot(null)} className="absolute -top-12 right-0 text-white font-black text-xl hover:text-[#FBBF24] bg-transparent border-none cursor-pointer">Close ✕</button>
             <img src={selectedScreenshot} className="max-w-full max-h-[80vh] object-contain rounded-2xl shadow-2xl" alt="Zoomed Screenshot" />
           </div>
-        </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Reject Chef Modal */}
+      {rejectChefModal && createPortal(
+        <div className="fixed inset-0 z-[100000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-[35px] p-8 max-w-sm w-full shadow-2xl">
+            <h3 className="font-black text-lg uppercase italic mb-2 text-red-600 font-sans">Reject Chef Application?</h3>
+            <p className="text-xs text-gray-500 font-bold mb-4 font-sans">
+              Please enter the reason for rejecting this chef's application.
+            </p>
+            <textarea
+              value={chefRejectReason}
+              onChange={e => setChefRejectReason(e.target.value)}
+              placeholder="Reason for rejection (required)..."
+              className="w-full border-2 border-gray-200 rounded-2xl p-3 text-sm font-bold outline-none focus:border-red-400 resize-none h-24 mb-4 font-sans"
+            />
+            <div className="flex gap-3 font-sans">
+              <button 
+                onClick={() => { setRejectChefModal(null); setChefRejectReason(''); }} 
+                className="flex-1 py-3 bg-gray-100 rounded-2xl font-black text-[10px] uppercase hover:bg-gray-200 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  handleVerifyChef(rejectChefModal.chefId, 'reject', chefRejectReason);
+                  setRejectChefModal(null);
+                  setChefRejectReason('');
+                }}
+                disabled={!chefRejectReason.trim()}
+                className="flex-1 py-3 bg-red-500 text-white rounded-2xl font-black text-[10px] uppercase hover:bg-red-600 transition-all disabled:opacity-50"
+              >
+                Confirm Reject
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Reject Rider Modal */}
+      {rejectRiderModal && createPortal(
+        <div className="fixed inset-0 z-[100000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-[35px] p-8 max-w-sm w-full shadow-2xl">
+            <h3 className="font-black text-lg uppercase italic mb-2 text-red-600 font-sans">Reject Rider Application?</h3>
+            <p className="text-xs text-gray-500 font-bold mb-4 font-sans">
+              Please enter the reason for rejecting this rider's application.
+            </p>
+            <textarea
+              value={riderRejectReason}
+              onChange={e => setRiderRejectReason(e.target.value)}
+              placeholder="Reason for rejection (required)..."
+              className="w-full border-2 border-gray-200 rounded-2xl p-3 text-sm font-bold outline-none focus:border-red-400 resize-none h-24 mb-4 font-sans"
+            />
+            <div className="flex gap-3 font-sans">
+              <button 
+                onClick={() => { setRejectRiderModal(null); setRiderRejectReason(''); }} 
+                className="flex-1 py-3 bg-gray-100 rounded-2xl font-black text-[10px] uppercase hover:bg-gray-200 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  handleVerifyRider(rejectRiderModal.riderId, 'reject', riderRejectReason);
+                  setRejectRiderModal(null);
+                  setRiderRejectReason('');
+                }}
+                disabled={!riderRejectReason.trim()}
+                className="flex-1 py-3 bg-red-500 text-white rounded-2xl font-black text-[10px] uppercase hover:bg-red-600 transition-all disabled:opacity-50"
+              >
+                Confirm Reject
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );

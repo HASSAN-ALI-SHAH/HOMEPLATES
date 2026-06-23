@@ -1,13 +1,15 @@
 // src/utils/toast.js
+import { toast as hotToast } from 'react-hot-toast';
+
 export const toast = {
   success: (message) => {
-    window.dispatchEvent(new CustomEvent('app-toast', { detail: { message, type: 'success' } }));
+    hotToast.success(message);
   },
   error: (message) => {
-    window.dispatchEvent(new CustomEvent('app-toast', { detail: { message, type: 'error' } }));
+    hotToast.error(message);
   },
   info: (message) => {
-    window.dispatchEvent(new CustomEvent('app-toast', { detail: { message, type: 'info' } }));
+    hotToast(message);
   }
 };
 export default toast;

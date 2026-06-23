@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldCheck, Lock, Mail, ArrowRight, ArrowLeft, Home } from 'lucide-react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import API from '../api';
 import { toast } from '../utils/toast';
 
@@ -38,6 +38,13 @@ const AdminLogin = ({ onLogin }) => {
     } finally { setLoading(false); }
   };
 
+  const handleUserLoginRedirect = (e) => {
+    e.preventDefault();
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    window.location.href = '/login';
+  };
+
   return (
     <div className="min-h-screen bg-[#1A2316] flex flex-col items-center justify-center p-6">
       {/* Back Navigation */}
@@ -48,12 +55,12 @@ const AdminLogin = ({ onLogin }) => {
         >
           <ArrowLeft size={14} /> Back to Home
         </button>
-        <Link
-          to="/login"
-          className="flex items-center gap-2 text-gray-400 hover:text-[#FBBF24] font-black text-[10px] uppercase tracking-widest transition-colors"
+        <button
+          onClick={handleUserLoginRedirect}
+          className="flex items-center gap-2 text-gray-400 hover:text-[#FBBF24] font-black text-[10px] uppercase tracking-widest transition-colors bg-transparent border-none outline-none cursor-pointer"
         >
           User Login <ArrowRight size={14} />
-        </Link>
+        </button>
       </div>
 
       <div className="w-full max-w-md bg-white rounded-[50px] p-10 shadow-2xl">
@@ -61,7 +68,6 @@ const AdminLogin = ({ onLogin }) => {
           <div className="bg-[#FBBF24] w-20 h-20 rounded-[30px] flex items-center justify-center mx-auto mb-6 shadow-xl shadow-yellow-500/20"><ShieldCheck size={40} className="text-[#1A2316]"/></div>
           <h2 className="text-3xl font-black italic uppercase text-[#1A2316]">Admin Entry<span className="text-[#FBBF24]">.</span></h2>
           <p className="text-gray-400 font-bold text-[10px] uppercase tracking-[0.3em] mt-2">Restricted Access Area</p>
-          <p className="text-[10px] text-gray-300 mt-3">Use: admin@homeplates.pk / admin123</p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="relative"><Mail className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-300" size={18}/><input type="email" placeholder="Admin Email" className="w-full pl-14 pr-6 py-5 bg-gray-50 rounded-[25px] outline-none font-bold text-sm border-2 border-transparent focus:border-[#FBBF24] transition-all" onChange={e => setEmail(e.target.value)} required/></div>
@@ -80,12 +86,12 @@ const AdminLogin = ({ onLogin }) => {
             <Home size={12} /> HomePlates Home
           </button>
           <span className="text-gray-200 text-xs">|</span>
-          <Link
-            to="/login"
-            className="text-gray-400 hover:text-[#1A2316] font-bold text-[10px] uppercase tracking-wider transition-colors"
+          <button
+            onClick={handleUserLoginRedirect}
+            className="text-gray-400 hover:text-[#1A2316] font-bold text-[10px] uppercase tracking-wider transition-colors bg-transparent border-none outline-none cursor-pointer"
           >
             Customer Login
-          </Link>
+          </button>
         </div>
       </div>
     </div>

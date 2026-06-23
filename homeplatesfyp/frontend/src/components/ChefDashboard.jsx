@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChefHat, Bell, Calculator, ScrollText, LayoutDashboard, Star, TrendingUp, Package, CheckCircle, Clock, LogOut, Info, Plus, Minus, Search, User, Edit3, Trash2, ToggleLeft, ToggleRight, RefreshCw, Wallet, CheckSquare, XSquare, BookOpen, Camera, X } from 'lucide-react';
+import { ChefHat, Bell, Calculator, ScrollText, LayoutDashboard, Star, TrendingUp, Package, CheckCircle, Clock, LogOut, Info, Plus, Minus, Search, User, Edit3, Trash2, ToggleLeft, ToggleRight, RefreshCw, Wallet, CheckSquare, XSquare, BookOpen, Camera, X, XCircle } from 'lucide-react';
 import API from '../api';
 import { io } from 'socket.io-client';
 import { toast } from '../utils/toast';
@@ -56,6 +56,8 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
 
   // B14: Delete dish modal state
   const [deleteDishModal, setDeleteDishModal] = useState(null); // { id, name } or null
+  const [rejectOrderModal, setRejectOrderModal] = useState(null); // { orderId } or null
+  const [rejectReason, setRejectReason] = useState('');
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawMethod, setWithdrawMethod] = useState('EasyPaisa');
@@ -229,11 +231,25 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
   const handleDeletePlan = async (planId) => {
     if (!window.confirm("Are you sure you want to delete this subscription plan?")) return;
     try {
-      await API.delete(`/api/subscriptions/plans/${planId}`, authH);
-      toast.success("Plan deleted!");
+      const res = await API.delete(`/api/subscriptions/plans/${planId}`, authH);
+      toast.success(res.data?.message || "Plan deleted!");
       fetchAll();
     } catch (e) {
       toast.error("Delete failed: " + (e.response?.data?.message || e.message));
+    }
+  };
+
+  const handleResubmitVerification = async () => {
+    try {
+      const res = await API.post('/api/chef/resubmit-verification', {}, authH);
+      toast.success(res.data?.message || 'Verification request resubmitted!');
+      const updatedUser = { ...currentUser, verificationStatus: 'pending' };
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      setCurrentUser(updatedUser);
+      if (onUserUpdate) onUserUpdate(updatedUser);
+      fetchAll();
+    } catch (err) {
+      toast.error('Resubmit failed: ' + (err.response?.data?.message || err.message));
     }
   };
 
@@ -442,6 +458,42 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
           </div>
         </div>
       )}
+
+      {/* Reject Order Modal */}
+      {rejectOrderModal && (
+        <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-[35px] p-8 max-w-sm w-full shadow-2xl">
+            <h3 className="font-black text-lg uppercase italic mb-2 text-red-600 font-sans">Reject Order?</h3>
+            <p className="text-xs text-gray-500 font-bold mb-4 font-sans">
+              Please enter a reason for rejecting this order.
+            </p>
+            <textarea
+              value={rejectReason}
+              onChange={e => setRejectReason(e.target.value)}
+              placeholder="Reason for rejection (optional)..."
+              className="w-full border-2 border-gray-200 rounded-2xl p-3 text-sm font-bold outline-none focus:border-red-400 resize-none h-24 mb-4 font-sans"
+            />
+            <div className="flex gap-3 font-sans">
+              <button 
+                onClick={() => { setRejectOrderModal(null); setRejectReason(''); }} 
+                className="flex-1 py-3 bg-gray-100 rounded-2xl font-black text-[10px] uppercase hover:bg-gray-200 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  updateStatus(rejectOrderModal.orderId, 'cancelled', rejectReason || 'Chef rejected');
+                  setRejectOrderModal(null);
+                  setRejectReason('');
+                }}
+                className="flex-1 py-3 bg-red-500 text-white rounded-2xl font-black text-[10px] uppercase hover:bg-red-600 transition-all"
+              >
+                Reject Order
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <aside className="w-full md:w-72 bg-[#1A2316] text-white p-6 flex flex-col md:sticky md:top-0 md:h-screen shadow-2xl z-50">
         <div className="flex items-center gap-3 mb-12 px-2">
           <div className="bg-[#FBBF24] p-2.5 rounded-xl text-[#1A2316]"><ChefHat size={24} /></div>
@@ -548,10 +600,35 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
         {activeTab === 'overview' && (
           <div className="space-y-6">
             {!currentUser.isVerified && (
-              <div className="bg-yellow-50 border-2 border-yellow-200 p-5 rounded-3xl flex items-center gap-3">
-                <Info size={20} className="text-yellow-500 flex-shrink-0" />
-                <p className="text-sm font-bold text-yellow-700">Account <strong>pending admin verification</strong>. You can add dishes now — customers can see your menu after approval.</p>
-              </div>
+              currentUser.verificationStatus === 'rejected' ? (
+                <div className="bg-red-50 border-2 border-red-200 p-6 rounded-[30px] flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                  <div className="flex items-center gap-3">
+                    <XCircle size={24} className="text-red-500 flex-shrink-0" />
+                    <div>
+                      <p className="font-black uppercase text-red-700 text-sm tracking-wide">Verification Rejected</p>
+                      <p className="text-red-600 text-xs font-bold mt-0.5">
+                        Your account application has been rejected by Admin. Please update your profile/documents if needed and resubmit.
+                      </p>
+                      {currentUser.rejectionReason && (
+                        <p className="text-red-800 text-xs font-black mt-2 bg-red-100/50 px-3 py-1.5 rounded-xl border border-red-200/40 w-fit uppercase tracking-wide">
+                          Reason: {currentUser.rejectionReason}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleResubmitVerification}
+                    className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-wider transition-all flex-shrink-0"
+                  >
+                    Resubmit Verification Request
+                  </button>
+                </div>
+              ) : (
+                <div className="bg-yellow-50 border-2 border-yellow-200 p-5 rounded-3xl flex items-center gap-3">
+                  <Info size={20} className="text-yellow-500 flex-shrink-0" />
+                  <p className="text-sm font-bold text-yellow-700">Account <strong>pending admin verification</strong>. You can add dishes now — customers can see your menu after approval.</p>
+                </div>
+              )
             )}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-5">
               {[
@@ -572,7 +649,7 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
                     <div><p className="font-black">{o.user?.name||'Customer'}</p><p className="text-xs text-gray-400">{o.items?.length} items · PKR {o.totalAmount}</p></div>
                     <div className="flex gap-2">
                       <button onClick={() => updateStatus(o._id,'accepted')} className="bg-green-500 text-white px-4 py-2 rounded-xl text-[10px] font-black">Accept</button>
-                      <button onClick={() => updateStatus(o._id,'cancelled','Chef rejected')} className="bg-red-100 text-red-600 px-4 py-2 rounded-xl text-[10px] font-black">Reject</button>
+                      <button onClick={() => setRejectOrderModal({ orderId: o._id })} className="bg-red-100 text-red-600 px-4 py-2 rounded-xl text-[10px] font-black">Reject</button>
                     </div>
                   </div>
                 ))}
@@ -643,7 +720,7 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
                       <button onClick={() => updateStatus(o._id,'accepted')} className="flex-1 bg-green-500 text-white py-3 rounded-2xl font-black text-[10px] flex items-center justify-center gap-2">
                         <CheckSquare size={14}/>Accept Order
                       </button>
-                      <button onClick={() => {const r=prompt('Rejection reason?')||'Chef rejected'; updateStatus(o._id,'cancelled',r);}} className="flex-1 bg-red-50 text-red-600 py-3 rounded-2xl font-black text-[10px] flex items-center justify-center gap-2">
+                      <button onClick={() => setRejectOrderModal({ orderId: o._id })} className="flex-1 bg-red-50 text-red-600 py-3 rounded-2xl font-black text-[10px] flex items-center justify-center gap-2">
                         <XSquare size={14}/>Reject
                       </button>
                     </div>
@@ -1552,6 +1629,7 @@ const ProfileTab = ({ user, chefId, token, onUpdateUser }) => {
     kitchenName: user.kitchenName||'',
     about: user.about||'',
     phone: user.phone||'',
+    cnic: user.cnic||'',
     address: user.address||'',
     specialty: user.specialty||'',
     experience: user.experience||'',
@@ -1668,6 +1746,7 @@ const ProfileTab = ({ user, chefId, token, onUpdateUser }) => {
           ['name','Full Name','text'],
           ['kitchenName','Kitchen Name','text'],
           ['phone','Phone','text'],
+          ['cnic','CNIC / License','text'],
           ['specialty','Specialty (e.g. Desi, BBQ)','text'],
           ['experience','Experience (e.g. 5 Years)','text'],
           ['about','About Kitchen','textarea'],

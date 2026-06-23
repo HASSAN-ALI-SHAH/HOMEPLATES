@@ -44,7 +44,11 @@ router.put('/verify-chef/:id', authMiddleware, adminOnly, async (req, res) => {
 
     const chef = await User.findByIdAndUpdate(
       req.params.id, 
-      { isVerified, verificationStatus: status }, 
+      { 
+        isVerified, 
+        verificationStatus: status,
+        rejectionReason: action === 'reject' ? (reason || 'Document mismatch') : undefined
+      }, 
       { new: true }
     );
 
@@ -511,11 +515,204 @@ router.patch('/support/:id', authMiddleware, adminOnly, async (req, res) => {
   }
 });
 
-// Delete a ticket
-router.delete('/support/:id', authMiddleware, adminOnly, async (req, res) => {
+// --- NEW RIDER VERIFICATION & WITHDRAWALS ---
+const Notification = require('../models/Notification');
+const WithdrawalRequest = require('../models/WithdrawalRequest');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+
+const uploadDir = './uploads/';
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadDir),
+  filename: (req, file, cb) => cb(null, Date.now() + '-' + path.extname(file.originalname))
+});
+const upload = multer({ 
+  storage, 
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+});
+
+// GET Admin Notifications
+router.get('/notifications', authMiddleware, adminOnly, async (req, res) => {
   try {
-    await SupportTicket.findByIdAndDelete(req.params.id);
-    res.json({ message: 'Ticket deleted' });
+    const list = await Notification.find({ recipientRole: 'admin' })
+      .sort({ isRead: 1, createdAt: -1 });
+    res.json(list);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Mark Admin Notification Read
+router.patch('/notifications/:id/read', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const noti = await Notification.findByIdAndUpdate(req.params.id, { isRead: true }, { new: true });
+    res.json(noti);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET Riders List with status filters (All / Pending / Verified / Rejected)
+router.get('/riders/list', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const { status } = req.query; // 'pending' | 'verified' | 'rejected' or empty
+    let query = { role: 'rider' };
+    if (status && ['pending', 'verified', 'rejected'].includes(status)) {
+      query.verificationStatus = status;
+    }
+    const riders = await User.find(query).select('-password').sort({ createdAt: -1 });
+    res.json(riders);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Verify Rider Account (Approve / Reject)
+router.put('/verify-rider/:id', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const { action, reason } = req.body; // action: 'approve' | 'reject'
+    const status = action === 'approve' ? 'verified' : 'rejected';
+    const isVerified = action === 'approve';
+
+    const rider = await User.findByIdAndUpdate(
+      req.params.id,
+      {
+        isVerified,
+        verificationStatus: status,
+        rejectionReason: action === 'reject' ? (reason || 'Document mismatch') : null,
+        verificationReviewedAt: new Date(),
+        verificationReviewedBy: req.user.id
+      },
+      { new: true }
+    );
+
+    if (!rider) return res.status(404).json({ message: "Rider not found" });
+
+    // Send notification email
+    const subject = action === 'approve' ? "Your HomePlates Rider Account is Active!" : "HomePlates — Rider Verification Rejected";
+    const emailHtml = action === 'approve'
+      ? `<h2>Welcome Rider ${rider.name}!</h2><p>Your HomePlates rider account has been verified and activated. You can now log in, go online, and accept orders.</p>`
+      : `<h2>Rider Account Update</h2><p>Unfortunately, your verification was rejected. Reason: <strong>${reason || 'Document mismatch'}</strong>. Please edit/update your profile on your dashboard to re-submit.</p>`;
+    
+    await sendEmail(rider.email, subject, emailHtml).catch(() => {});
+
+    // Emit Socket event to Rider
+    try {
+      const io = socketHelper.getIo();
+      io.to(`rider_${rider._id}`).emit('verificationUpdate', { status, rejectionReason: action === 'reject' ? reason : null });
+      io.to(rider._id.toString()).emit('verificationUpdate', { status, rejectionReason: action === 'reject' ? reason : null });
+    } catch (_) {}
+
+    res.json({ message: `Rider ${action === 'approve' ? 'Approved' : 'Rejected'} successfully!`, rider });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET Rider Withdrawal Requests
+router.get('/rider/withdrawals', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const { status } = req.query; // 'pending' | 'approved' | 'rejected' | 'paid' or empty
+    let query = {};
+    if (status) query.status = status;
+    const requests = await WithdrawalRequest.find(query)
+      .populate('rider', 'name email phone wallet')
+      .sort({ requestedAt: -1 });
+    res.json(requests);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Approve/Reject Rider Withdrawal Request (Phase 1)
+router.patch('/rider/withdrawals/:id', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const { action, adminNote } = req.body; // action: 'approve' | 'reject'
+    const request = await WithdrawalRequest.findById(req.params.id);
+    if (!request) return res.status(404).json({ message: "Withdrawal request not found" });
+    if (request.status !== 'pending') {
+      return res.status(400).json({ message: "Request has already been processed" });
+    }
+
+    request.status = action === 'approve' ? 'approved' : 'rejected';
+    if (adminNote) request.adminNote = adminNote;
+    request.processedBy = req.user.id;
+    await request.save();
+
+    // Emit Socket event to Rider
+    try {
+      const io = socketHelper.getIo();
+      io.to(`rider_${request.rider}`).emit('withdrawalStatusUpdate', { requestId: request._id, status: request.status });
+      io.to(request.rider.toString()).emit('withdrawalStatusUpdate', { requestId: request._id, status: request.status });
+    } catch (_) {}
+
+    res.json({ message: `Withdrawal request ${request.status} successfully`, request });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Upload Proof & Pay Rider Withdrawal Request (Phase 2)
+router.patch('/rider/withdrawals/:id/pay', authMiddleware, adminOnly, upload.single('proof'), async (req, res) => {
+  try {
+    const request = await WithdrawalRequest.findById(req.params.id);
+    if (!request) return res.status(404).json({ message: "Withdrawal request not found" });
+    if (request.status !== 'approved') {
+      return res.status(400).json({ message: "Request must be approved first before marking as paid" });
+    }
+    if (!req.file) {
+      return res.status(400).json({ message: "Payment proof image is required" });
+    }
+
+    const rider = await User.findById(request.rider);
+    if (!rider) return res.status(404).json({ message: "Rider not found" });
+
+    if (rider.wallet < request.amount) {
+      return res.status(400).json({ message: "Rider has insufficient wallet balance to complete this transaction" });
+    }
+
+    // Deduct from wallet now
+    rider.wallet -= request.amount;
+    await rider.save();
+
+    // Update request
+    request.status = 'paid';
+    request.proofImage = `/uploads/${req.file.filename}`;
+    request.processedAt = new Date();
+    request.processedBy = req.user.id;
+    await request.save();
+
+    // Also create a WalletTransaction record to keep transaction history complete
+    await WalletTransaction.create({
+      chefId: request.rider, // using chefId field for rider to reuse model
+      type: 'debit',
+      amount: request.amount,
+      status: 'approved',
+      processedBy: req.user.id,
+      accountDetails: `Withdrawal Paid: Request #${request._id.toString().slice(-6)}`
+    });
+
+    // Emit Socket event to Rider
+    try {
+      const io = socketHelper.getIo();
+      io.to(`rider_${request.rider}`).emit('withdrawalStatusUpdate', { 
+        requestId: request._id, 
+        status: 'paid', 
+        proofImage: request.proofImage 
+      });
+      io.to(request.rider.toString()).emit('withdrawalStatusUpdate', { 
+        requestId: request._id, 
+        status: 'paid', 
+        proofImage: request.proofImage 
+      });
+    } catch (_) {}
+
+    res.json({ message: "Withdrawal marked as paid, proof uploaded, and balance deducted successfully", request });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

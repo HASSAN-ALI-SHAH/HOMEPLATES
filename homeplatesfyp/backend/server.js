@@ -40,6 +40,8 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/HomePlates'
       try {
         const Menu = require('./models/Menu');
         const User = require('./models/User');
+        
+        // 1. Menu cities migration
         const menusWithoutCity = await Menu.find({ city: { $exists: false } });
         if (menusWithoutCity.length > 0) {
           console.log(`🔄 Migrating ${menusWithoutCity.length} menu items to add city...`);
@@ -52,8 +54,23 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/HomePlates'
           }
           console.log("✅ Menu migration completed!");
         }
+
+        // 2. Backfill existing riders who don't have verificationStatus set
+        const ridersToBackfill = await User.find({
+          role: 'rider',
+          verificationStatus: { $exists: false }
+        });
+        if (ridersToBackfill.length > 0) {
+          console.log(`🔄 Backfilling verificationStatus for ${ridersToBackfill.length} existing riders...`);
+          for (let rider of ridersToBackfill) {
+            rider.verificationStatus = 'verified';
+            rider.isVerified = true;
+            await rider.save();
+          }
+          console.log("✅ Rider verification backfill completed!");
+        }
       } catch (err) {
-        console.error("❌ Error migrating menu cities:", err);
+        console.error("❌ Error during migrations:", err);
       }
     };
     runMigration();

@@ -15,7 +15,6 @@ const Auth = ({ onLogin, isModal = false, currentUser }) => {
   const [otpCode, setOtpCode] = useState('');
   
   // Custom Alert state
-  const [alertInfo, setAlertInfo] = useState(null); // { type: 'success' | 'error' | 'dev', msg: '', devOtp?: '' }
   const [formError, setFormError] = useState(null);
   const [formSuccess, setFormSuccess] = useState(null);
 
@@ -38,19 +37,15 @@ const Auth = ({ onLogin, isModal = false, currentUser }) => {
     name: '', email: '', phone: '', cnic: '', city: '', password: '', confirmPassword: ''
   });
 
-  const showAlert = (msg, type = 'success', devOtp = '') => {
+  const showAlert = (msg, type = 'success') => {
     setFormError(null);
     setFormSuccess(null);
-    if (type === 'dev') {
-      setAlertInfo({ msg, type, devOtp });
-    } else {
-      if (type === 'success') {
-        toast.success(msg);
-        setFormSuccess(msg);
-      } else if (type === 'error') {
-        toast.error(msg);
-        setFormError(msg);
-      }
+    if (type === 'success') {
+      toast.success(msg);
+      setFormSuccess(msg);
+    } else if (type === 'error') {
+      toast.error(msg);
+      setFormError(msg);
     }
   };
 
@@ -67,7 +62,6 @@ const Auth = ({ onLogin, isModal = false, currentUser }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
-    setAlertInfo(null);
     setFormError(null);
     setFormSuccess(null);
 
@@ -105,11 +99,7 @@ const Auth = ({ onLogin, isModal = false, currentUser }) => {
           role
         });
 
-        if (res.data.devOtp) {
-          showAlert("Account created! Verify your email using the development code below.", "dev", res.data.devOtp);
-        } else {
-          showAlert("Verification OTP has been sent to your email!", "success");
-        }
+        showAlert("Verification OTP has been sent to your email!", "success");
         setStep('otp'); // Switch to OTP step
       }
     } catch (err) {
@@ -117,11 +107,7 @@ const Auth = ({ onLogin, isModal = false, currentUser }) => {
       
       // If backend says email is not verified, redirect to OTP verification screen
       if (err.response?.data?.requiresOtp) {
-        if (err.response.data.devOtp) {
-          showAlert("Verification required. Use the OTP code shown below.", "dev", err.response.data.devOtp);
-        } else {
-          showAlert(errorMsg, "error");
-        }
+        showAlert(errorMsg, "error");
         setStep('otp');
       } else {
         showAlert(errorMsg, "error");
@@ -163,11 +149,7 @@ const Auth = ({ onLogin, isModal = false, currentUser }) => {
   const handleResendOtp = async () => {
     try {
       const res = await API.post('/api/auth/resend-otp', { email: formData.email });
-      if (res.data.devOtp) {
-        showAlert("New OTP generated for testing.", "dev", res.data.devOtp);
-      } else {
-        showAlert("A new OTP code has been sent to your email!", "success");
-      }
+      showAlert("A new OTP code has been sent to your email!", "success");
     } catch (err) {
       showAlert(err.response?.data?.message || "Failed to resend OTP.", "error");
     }
@@ -238,7 +220,7 @@ const Auth = ({ onLogin, isModal = false, currentUser }) => {
           <button type="button" onClick={handleResendOtp} className="text-xs font-black uppercase text-gray-400 hover:text-[#1A2316] transition-all flex items-center gap-1">
             <RefreshCw size={12}/> Resend Code
           </button>
-          <button type="button" onClick={() => { setStep('auth'); setAlertInfo(null); }} className="text-xs font-black uppercase text-gray-400 hover:text-[#1A2316] hover:underline transition-all">
+          <button type="button" onClick={() => { setStep('auth'); }} className="text-xs font-black uppercase text-gray-400 hover:text-[#1A2316] hover:underline transition-all">
             Back to Auth
           </button>
         </div>
@@ -249,33 +231,7 @@ const Auth = ({ onLogin, isModal = false, currentUser }) => {
   return (
     <div className={`${isModal ? 'h-auto' : 'h-screen'} w-full bg-[#F3F4F6] flex items-center justify-center overflow-hidden font-sans p-2 relative`}>
       
-      {/* PROFESSIONAL POPUP NOTIFICATION MODAL */}
-      {alertInfo && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[3000] w-full max-w-md p-5 bg-white rounded-[32px] shadow-2xl border border-gray-100/80 animate-in slide-in duration-300">
-          <div className="flex items-start gap-4">
-            <div className={`p-3 rounded-2xl ${alertInfo.type === 'error' ? 'bg-red-50 text-red-500' : 'bg-green-50 text-green-600'}`}>
-              <AlertCircle size={20} />
-            </div>
-            <div className="flex-1">
-              <h4 className="font-black uppercase text-[10px] tracking-widest text-[#1A2316] mb-1">
-                {alertInfo.type === 'error' ? 'Security Alert' : alertInfo.type === 'dev' ? 'Developer Box' : 'System Message'}
-              </h4>
-              <p className="text-xs text-gray-500 font-bold">{alertInfo.msg}</p>
-              
-              {alertInfo.devOtp && (
-                <div className="mt-3 p-4 bg-yellow-50/70 border border-yellow-200/50 rounded-2xl text-center">
-                  <span className="text-[8px] font-black uppercase text-yellow-700 tracking-wider block mb-1">Verification OTP Code</span>
-                  <span className="text-3xl font-black text-[#1A2316] tracking-[0.25em]">{alertInfo.devOtp}</span>
-                  <span className="text-[8px] text-gray-400 font-semibold block mt-2">Enter this code to complete validation</span>
-                </div>
-              )}
-            </div>
-            <button onClick={() => setAlertInfo(null)} className="p-1.5 hover:bg-gray-50 rounded-full transition-colors text-gray-400 hover:text-black">
-              <X size={16} />
-            </button>
-          </div>
-        </div>
-      )}
+
 
       <div className={`w-full max-w-5xl ${isModal ? 'h-[80vh]' : 'h-[85vh]'} bg-white rounded-[50px] shadow-2xl flex relative overflow-hidden`}>
         
@@ -286,7 +242,7 @@ const Auth = ({ onLogin, isModal = false, currentUser }) => {
               {step === 'otp' ? "Verify \nEmail!" : isLogin ? "Hello \nFriend!" : "Welcome \nBack!"}
             </h2>
             {step !== 'otp' && (
-              <button type="button" onClick={() => { setIsLogin(!isLogin); handleRoleChange('user'); setAlertInfo(null); setFormError(null); setFormSuccess(null); }} className="px-12 py-4 border-2 border-[#FBBF24] text-[#FBBF24] rounded-full font-black uppercase text-[10px] tracking-widest hover:bg-[#FBBF24] hover:text-[#1A2316] transition-all">
+              <button type="button" onClick={() => { setIsLogin(!isLogin); handleRoleChange('user'); setFormError(null); setFormSuccess(null); }} className="px-12 py-4 border-2 border-[#FBBF24] text-[#FBBF24] rounded-full font-black uppercase text-[10px] tracking-widest hover:bg-[#FBBF24] hover:text-[#1A2316] transition-all">
                 {isLogin ? "Create Account" : "Login Instead"}
               </button>
             )}

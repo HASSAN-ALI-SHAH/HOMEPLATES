@@ -12,7 +12,7 @@ const getImageUrl = (url) => {
   return `${window.API_URL}${url}`;
 };
 
-const ExploreFood = ({ currentUser }) => {
+const ExploreFood = ({ currentUser, handleAddToCart }) => {
   const [query, setQuery] = useState("");
   const [activeTab, setActiveTab] = useState("All");
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -228,7 +228,25 @@ const ExploreFood = ({ currentUser }) => {
                    </div>
                    <div className="flex gap-6 overflow-x-auto no-scrollbar pb-4">
                       {nearDishes.map(food => (
-                        <motion.div key={food._id} whileHover={{ scale: 1.02 }} onClick={() => navigate(`/order/${food._id}`)} className="min-w-[340px] bg-[#1A2316] p-4 rounded-[35px] flex gap-5 items-center cursor-pointer group transition-all shadow-xl">
+                        <motion.div 
+                          key={food._id} 
+                          whileHover={{ scale: 1.02 }} 
+                          onClick={() => {
+                            handleAddToCart({
+                              _id: food._id,
+                              name: food.name,
+                              price: food.price,
+                              basePrice: food.price,
+                              img: food.img,
+                              chefId: food.chefId?._id || food.chefId || food.chef,
+                              chefName: food.chef || 'Chef',
+                              qty: 1,
+                              portion: 'Full'
+                            });
+                            navigate('/cart');
+                          }} 
+                          className="min-w-[340px] bg-[#1A2316] p-4 rounded-[35px] flex gap-5 items-center cursor-pointer group transition-all shadow-xl"
+                        >
                            <img src={getImageUrl(food.img)} className="w-24 h-24 rounded-[28px] object-cover" alt=""/>
                            <div className="flex-1">
                               <h4 className="text-white font-black uppercase italic text-[13px] group-hover:text-[#FBBF24] transition-colors">{food.name}</h4>
@@ -247,7 +265,25 @@ const ExploreFood = ({ currentUser }) => {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
                  <AnimatePresence>
                     {filteredFood.map(food => (
-                      <FoodCard key={food._id} food={food} onCardClick={() => navigate(`/order/${food._id}`)} onChefClick={(e) => goToChef(e, food.chefId)} />
+                      <FoodCard 
+                        key={food._id} 
+                        food={food} 
+                        onCardClick={() => {
+                          handleAddToCart({
+                            _id: food._id,
+                            name: food.name,
+                            price: food.price,
+                            basePrice: food.price,
+                            img: food.img,
+                            chefId: food.chefId?._id || food.chefId || food.chef,
+                            chefName: food.chef || 'Chef',
+                            qty: 1,
+                            portion: 'Full'
+                          });
+                          navigate('/cart');
+                        }} 
+                        onChefClick={(e) => goToChef(e, food.chefId)} 
+                      />
                     ))}
                  </AnimatePresence>
               </div>

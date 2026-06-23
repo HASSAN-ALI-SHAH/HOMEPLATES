@@ -166,6 +166,11 @@ module.exports = (io) => {
       const rider = await User.findById(req.user.id);
       if (!rider) return res.status(404).json({ message: 'Rider not found' });
 
+      // Check rider verification status
+      if (rider.verificationStatus !== 'verified') {
+        return res.status(403).json({ message: "Your account is pending admin verification. You'll be notified once approved." });
+      }
+
       // B1: Block suspended riders from fetching available orders
       if (rider.isActive === false) {
         return res.status(403).json({ message: 'Your account is suspended. Contact admin.' });
@@ -555,6 +560,12 @@ module.exports = (io) => {
       // B1: Check rider suspension
       const riderUser = await User.findById(finalRiderId);
       if (!riderUser) return res.status(404).json({ message: 'Rider not found' });
+      
+      // Check rider verification status
+      if (riderUser.verificationStatus !== 'verified') {
+        return res.status(403).json({ message: "Your account is pending admin verification. You'll be notified once approved." });
+      }
+
       if (riderUser.isActive === false) {
         return res.status(403).json({ message: 'Your account is suspended. Contact admin to resolve.' });
       }

@@ -272,14 +272,11 @@ router.put('/plans/:id', async (req, res) => {
   }
 });
 
-// 10. Soft delete / deactivate plan
+// 10. Hard delete plan from database
 router.delete('/plans/:id', async (req, res) => {
   try {
-    const plan = await SubscriptionPlan.findById(req.params.id);
+    const plan = await SubscriptionPlan.findByIdAndDelete(req.params.id);
     if (!plan) return res.status(404).json({ message: "Plan not found" });
-
-    plan.isActive = false;
-    await plan.save();
     res.json({ message: "Plan deleted successfully!" });
   } catch (err) {
     res.status(500).json({ error: err.message });

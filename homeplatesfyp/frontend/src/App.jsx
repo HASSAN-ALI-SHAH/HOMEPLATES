@@ -22,7 +22,7 @@ import AdminDashboard from './components/AdminDashboard';
 import UserProfile from './components/UserProfile'; 
 import RiderDashboard from './components/RiderDashboard'; 
 import OrderTrackingNotification from './components/OrderTrackingNotification';
-import GlobalToast from './components/GlobalToast';
+import { Toaster } from 'react-hot-toast';
 
 const AppRoutes = ({ cart, setCart, cartCount, currentUser, onLogin, onLogout, handleAddToCart }) => {
   const navigate = useNavigate();
@@ -58,7 +58,7 @@ const AppRoutes = ({ cart, setCart, cartCount, currentUser, onLogin, onLogout, h
 
       <Routes>
         <Route path="/" element={<HomePlatesLanding />} /> 
-        <Route path="/explore" element={<ExploreFood currentUser={currentUser} />} />
+        <Route path="/explore" element={<ExploreFood currentUser={currentUser} handleAddToCart={handleAddToCart} />} />
         <Route path="/chefs" element={<AllChefs />} />
         <Route path="/login" element={<Auth onLogin={handleLogin} currentUser={currentUser} />} />
         <Route path="/auth" element={<Auth onLogin={handleLogin} currentUser={currentUser} />} />
@@ -109,7 +109,7 @@ const AppContent = ({ cart, setCart, cartCount, currentUser, onLogin, onLogout, 
 
   return (
     <>
-      <div className={`min-h-screen bg-[#FDFDFB] transition-all duration-700 ${applyBlurEffect ? 'blur-md pointer-events-none' : 'blur-0'}`}>
+      <div className={`min-h-screen bg-[#FDFDFB] transition-all duration-700 ${applyBlurEffect ? 'blur-md pointer-events-none' : ''}`}>
         <AppRoutes cart={cart} setCart={setCart} cartCount={cartCount} currentUser={currentUser} onLogin={onLogin} onLogout={onLogout} handleAddToCart={handleAddToCart} />
       </div>
 
@@ -117,7 +117,7 @@ const AppContent = ({ cart, setCart, cartCount, currentUser, onLogin, onLogout, 
       <OrderTrackingNotification currentUser={currentUser} />
 
       {/* Global toast notification system */}
-      <GlobalToast />
+      <Toaster position="top-right" />
 
       {applyBlurEffect && (
         <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4">

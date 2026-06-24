@@ -196,6 +196,7 @@ const RiderDashboard = ({ user: propUser, onLogout, onUserUpdate }) => {
       if (status === 'verified') {
         toast.success("Your account has been verified. You can now go online and accept orders.");
         setIsOnline(true);
+        fetchData();
       } else if (status === 'rejected') {
         toast.error(`Your verification request was rejected: ${rejectionReason || 'No reason specified'}`);
         setIsOnline(false);

@@ -134,7 +134,8 @@ router.post('/verify-otp', async (req, res) => {
         role: user.role, 
         img: user.img, 
         city: user.city, 
-        isVerified: user.isVerified 
+        isVerified: user.isVerified,
+        verificationStatus: user.verificationStatus
       } 
     });
   } catch (err) {
@@ -227,7 +228,8 @@ router.post('/login', async (req, res) => {
         role: user.role, 
         img: user.img, 
         city: user.city, 
-        isVerified: user.isVerified 
+        isVerified: user.isVerified,
+        verificationStatus: user.verificationStatus
       } 
     });
   } catch (err) {

@@ -40,7 +40,8 @@ module.exports = {
             console.log(`Rider ${riderId} joined riders_online broadcast room`);
             if (rider.city) {
               // Leave any old city rooms to avoid cross-city notifications
-              for (const room of socket.rooms) {
+              const rooms = Array.from(socket.rooms);
+              for (const room of rooms) {
                 if (room.startsWith('riders_') && room !== 'riders_online') {
                   socket.leave(room);
                 }
@@ -69,7 +70,8 @@ module.exports = {
           socket.join('riders_online');
           if (rider.city) {
             // Leave any old city rooms to avoid cross-city notifications
-            for (const room of socket.rooms) {
+            const rooms = Array.from(socket.rooms);
+            for (const room of rooms) {
               if (room.startsWith('riders_') && room !== 'riders_online') {
                 socket.leave(room);
               }

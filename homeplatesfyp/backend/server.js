@@ -69,6 +69,25 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/HomePlates'
           }
           console.log("✅ Rider verification backfill completed!");
         }
+
+        // 3. Backfill kitchenLocationGeo for existing chefs
+        const chefsToBackfill = await User.find({
+          role: 'chef',
+          'location.lat': { $exists: true },
+          'location.lng': { $exists: true },
+          kitchenLocationGeo: { $exists: false }
+        });
+        if (chefsToBackfill.length > 0) {
+          console.log(`🔄 Backfilling kitchenLocationGeo for ${chefsToBackfill.length} existing chefs...`);
+          for (let chef of chefsToBackfill) {
+            chef.kitchenLocationGeo = {
+              type: 'Point',
+              coordinates: [chef.location.lng, chef.location.lat]
+            };
+            await chef.save();
+          }
+          console.log("✅ Chef kitchenLocationGeo backfill completed!");
+        }
       } catch (err) {
         console.error("❌ Error during migrations:", err);
       }
@@ -192,6 +211,7 @@ const reviewRoutes      = require("./routes/reviewRoutes");
 const cartRoutes        = require("./routes/cartRoutes");
 const walletRoutes      = require("./routes/walletRoutes");
 const supportRoutes     = require("./routes/supportRoutes");
+const customerRoutes    = require("./routes/customerRoutes");
 
 // --- MOUNT ALL ROUTES ---
 app.use("/api/auth",          authRoutes);
@@ -210,6 +230,7 @@ app.use("/api/reviews",       reviewRoutes);
 app.use("/api/cart",          cartRoutes);
 app.use("/api/wallet",        walletRoutes);
 app.use("/api/support",       supportRoutes);
+app.use("/api/customer",      customerRoutes);
 app.use("/uploads",           express.static("uploads"));
 
 // --- SERVER START ---

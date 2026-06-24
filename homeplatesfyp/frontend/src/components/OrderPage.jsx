@@ -63,7 +63,7 @@ const OrderPage = ({ onAddToCart }) => {
     const finalPrice = portion === 'Half' ? Math.round(dish.price * 0.6) : dish.price;
     onAddToCart({ 
       ...dish, 
-      name: `${dish.name} (${portion})`, 
+      name: dish.name, 
       price: finalPrice, 
       qty, 
       instructions: note, 
@@ -87,7 +87,7 @@ const OrderPage = ({ onAddToCart }) => {
         <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative z-10">
             <img 
               src={getImageUrl(dish.img)} 
-              className="w-56 h-56 md:w-80 md:h-80 object-cover rounded-[60px] shadow-2xl border-8 border-white/5 rotate-3" 
+              className="w-56 h-56 md:w-80 md:h-80 object-cover rounded-[60px] shadow-2xl border-8 border-white/5" 
               alt={dish.name} 
             />
         </motion.div>

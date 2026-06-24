@@ -514,7 +514,12 @@ const ChefProfile = ({ handleAddToCart }) => {
                     .map(item => (
                       <div
                         key={item._id}
-                        className="group bg-white p-5 rounded-[45px] border border-gray-50 shadow-sm hover:shadow-xl transition-all duration-500"
+                        onClick={() => {
+                          if (item.isAvailable && chef?.isActive && chef?.isVerified) {
+                            navigate(`/order/${item._id}`);
+                          }
+                        }}
+                        className="group bg-white p-5 rounded-[45px] border border-gray-50 shadow-sm hover:shadow-xl cursor-pointer transition-all duration-500"
                       >
                         <div className="h-48 rounded-[35px] mb-6 overflow-hidden relative">
                           <img
@@ -543,23 +548,13 @@ const ChefProfile = ({ handleAddToCart }) => {
                         <div className="flex justify-between mt-6 items-center">
                           <span className="font-black text-2xl text-[#1A2316]">Rs. {item.price}</span>
                           <button
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation();
                               if (!chef?.isActive || !chef?.isVerified) {
                                 toast.error(chef?.isActive === false ? 'This chef is currently offline.' : 'Chef not verified yet.');
                                 return;
                               }
-                              handleAddToCart({
-                                _id: item._id,
-                                name: item.name,
-                                price: item.price,
-                                basePrice: item.price,
-                                img: item.img,
-                                chefId: id,
-                                chefName: chef?.name || 'Chef',
-                                qty: 1,
-                                portion: 'Full'
-                              });
-                              navigate('/cart');
+                              navigate(`/order/${item._id}`);
                             }}
                             disabled={!item.isAvailable || !chef?.isActive || !chef?.isVerified}
                             className="bg-[#1A2316] text-white p-4 rounded-2xl hover:bg-[#FBBF24] hover:text-[#1A2316] transition-all disabled:opacity-40 disabled:cursor-not-allowed"

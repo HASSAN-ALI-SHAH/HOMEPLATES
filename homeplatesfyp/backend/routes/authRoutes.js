@@ -13,7 +13,7 @@ const generateOTP = () => {
 // Signup Route
 router.post('/signup', async (req, res) => {
   try {
-    const { name, email, password, role, phone, cnic, city } = req.body;
+    const { name, email, password, role, phone, cnic, city, accountLocation } = req.body;
     
     if (!city || !['Lahore', 'Karachi', 'Islamabad'].includes(city)) {
       return res.status(400).json({ message: "City is required and must be Lahore, Karachi, or Islamabad" });
@@ -43,7 +43,12 @@ router.post('/signup', async (req, res) => {
       isEmailVerified: false,
       // Default verification values
       isVerified: (role === 'user' || role === 'admin'), // Users and Admin are verified directly, chefs/riders need admin approval
-      verificationStatus: (role === 'chef' || role === 'rider') ? 'pending' : 'verified'
+      verificationStatus: (role === 'chef' || role === 'rider') ? 'pending' : 'verified',
+      accountLocation: (role === 'user' && accountLocation && accountLocation.coordinates) ? {
+        type: 'Point',
+        coordinates: accountLocation.coordinates,
+        formattedAddress: accountLocation.formattedAddress
+      } : undefined
     });
 
     await newUser.save();
@@ -135,7 +140,8 @@ router.post('/verify-otp', async (req, res) => {
         img: user.img, 
         city: user.city, 
         isVerified: user.isVerified,
-        verificationStatus: user.verificationStatus
+        verificationStatus: user.verificationStatus,
+        accountLocation: user.accountLocation
       } 
     });
   } catch (err) {
@@ -229,7 +235,8 @@ router.post('/login', async (req, res) => {
         img: user.img, 
         city: user.city, 
         isVerified: user.isVerified,
-        verificationStatus: user.verificationStatus
+        verificationStatus: user.verificationStatus,
+        accountLocation: user.accountLocation
       } 
     });
   } catch (err) {

@@ -283,51 +283,11 @@ const CartPage = ({ cartItems, setCartItems, currentUser }) => {
                         <h4 className="font-black text-[#1A2316] uppercase text-sm tracking-tight">{item.name}</h4>
                         <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">By {item.chefName || item.chef || "Home Chef"}</p>
                         
-                        {/* Portion Toggle */}
-                        <div className="flex bg-gray-50 p-1 rounded-xl w-fit border border-gray-100 mt-2">
-                          {[
-                            { key: 'Half', label: 'Half Portion' },
-                            { key: 'Full', label: 'Full Portion' }
-                          ].map(opt => (
-                            <button
-                              key={opt.key}
-                              type="button"
-                              onClick={() => {
-                                const newPortion = opt.key;
-                                const originalBasePrice = item.basePrice || (item.portion === 'Half' ? Math.round(item.price / 0.6) : item.price);
-                                const newPrice = newPortion === 'Half' ? Math.round(originalBasePrice * 0.6) : originalBasePrice;
-                                
-                                setCartItems(prev => {
-                                  const existingIdx = prev.findIndex(i => (i._id || i.id) === itemId && (i.portion || 'Full') === newPortion);
-                                  if (existingIdx > -1) {
-                                    return prev.map((i, index) => {
-                                      if (index === existingIdx) {
-                                        return { ...i, qty: i.qty + item.qty };
-                                      }
-                                      return i;
-                                    }).filter(i => !((i._id || i.id) === itemId && (i.portion || 'Full') === itemPortion));
-                                  } else {
-                                    return prev.map(i => {
-                                      const iId = i._id || i.id;
-                                      const iPortion = i.portion || 'Full';
-                                      if (iId === itemId && iPortion === itemPortion) {
-                                        return {
-                                          ...i,
-                                          portion: newPortion,
-                                          price: newPrice,
-                                          basePrice: originalBasePrice
-                                        };
-                                      }
-                                      return i;
-                                    });
-                                  }
-                                });
-                              }}
-                              className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${itemPortion === opt.key ? 'bg-[#1A2316] text-[#FBBF24] shadow-sm' : 'text-gray-400 hover:text-[#1A2316]'}`}
-                            >
-                              {opt.label}
-                            </button>
-                          ))}
+                        {/* Portion Display */}
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="inline-block bg-gray-50 border border-gray-100 text-[#1A2316] text-[9px] font-black uppercase px-2.5 py-1 rounded-lg">
+                            Portion: {itemPortion}
+                          </span>
                         </div>
 
                         {item.instructions && (

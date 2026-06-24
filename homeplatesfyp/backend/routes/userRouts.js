@@ -103,6 +103,10 @@ router.put('/:id', authMiddleware, upload.single('image'), async (req, res) => {
     if (locationLat !== undefined && locationLng !== undefined) {
       updateData['location.lat'] = parseFloat(locationLat);
       updateData['location.lng'] = parseFloat(locationLng);
+      updateData.kitchenLocationGeo = {
+        type: 'Point',
+        coordinates: [parseFloat(locationLng), parseFloat(locationLat)]
+      };
     }
 
     const user = await User.findById(req.params.id);

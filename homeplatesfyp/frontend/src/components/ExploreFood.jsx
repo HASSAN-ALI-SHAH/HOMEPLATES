@@ -1,10 +1,12 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { 
   Search, Star, ArrowRight, Menu, MapPin, TrendingUp, 
-  ChefHat, LayoutGrid, Flame, Zap
+  ChefHat, LayoutGrid, Flame, Zap, X
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { toast } from '../utils/toast';
+import MapPicker from './MapPicker';
 
 const getImageUrl = (url) => {
   if (!url) return 'https://images.pexels.com/photos/1640774/pexels-photo-1640774.jpeg';
@@ -21,6 +23,91 @@ const ExploreFood = ({ currentUser, handleAddToCart }) => {
   const [chefs, setChefs] = useState([]); // Dynamic chefs state
   const [subscriptions, setSubscriptions] = useState([]); // User's subscriptions status
   const navigate = useNavigate();
+
+  const [nearbyChefs, setNearbyChefs] = useState([]);
+  const [loadingNearby, setLoadingNearby] = useState(false);
+  const [locationRequired, setLocationRequired] = useState(false);
+  const [showLocationModal, setShowLocationModal] = useState(false);
+  const [selectedLocation, setSelectedLocation] = useState(null);
+
+  const fetchNearbyChefs = useCallback(() => {
+    if (!currentUser?._id) return;
+    setLoadingNearby(true);
+    setLocationRequired(false);
+    fetch(`${window.API_URL}/api/customer/near-me`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+    })
+      .then(res => {
+        if (res.status === 401) {
+          toast.error("Please log in to see restaurants near you.");
+          navigate('/login');
+          throw new Error("Unauthorized");
+        }
+        return res.json();
+      })
+      .then(data => {
+        if (data.locationRequired) {
+          setLocationRequired(true);
+          setShowLocationModal(true);
+        } else if (Array.isArray(data)) {
+          setNearbyChefs(data);
+        }
+      })
+      .catch(err => {
+        console.error("Error fetching nearby chefs:", err);
+      })
+      .finally(() => {
+        setLoadingNearby(false);
+      });
+  }, [currentUser?._id, navigate]);
+
+  useEffect(() => {
+    if (viewMode === "near") {
+      fetchNearbyChefs();
+    }
+  }, [viewMode, fetchNearbyChefs]);
+
+  useEffect(() => {
+    if (currentUser && currentUser.role === 'user' && !currentUser.accountLocation) {
+      setShowLocationModal(true);
+    }
+  }, [currentUser]);
+
+  const handleSaveLocation = async () => {
+    if (!selectedLocation) {
+      toast.error("Please select a location on the map first!");
+      return;
+    }
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${window.API_URL}/api/customer/location`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          coordinates: selectedLocation.coordinates,
+          formattedAddress: selectedLocation.formattedAddress
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        // Update user state locally
+        const updatedUser = { ...currentUser, accountLocation: data.user.accountLocation };
+        localStorage.setItem('user', JSON.stringify(updatedUser));
+        toast.success("Location updated successfully!");
+        setShowLocationModal(false);
+        // Refresh nearby list if currently viewing
+        fetchNearbyChefs();
+      } else {
+        const err = await res.json();
+        toast.error("Failed to update location: " + (err.error || err.message));
+      }
+    } catch (err) {
+      toast.error("Network error. Please try again.");
+    }
+  };
 
   // Data Fetching from Backend
   useEffect(() => {
@@ -110,16 +197,46 @@ const ExploreFood = ({ currentUser, handleAddToCart }) => {
         <nav className="flex-1 px-4 mt-6 space-y-2">
            <NavItem icon={<LayoutGrid size={18}/>} label="Explore" active={viewMode === "explore"} open={sidebarOpen} onClick={() => setViewMode("explore")} />
            <NavItem icon={<Flame size={18}/>} label="Trending" active={viewMode === "trending"} open={sidebarOpen} onClick={() => setViewMode("trending")} />
-           <NavItem icon={<Zap size={18}/>} label="Near You" active={viewMode === "near"} open={sidebarOpen} onClick={() => setViewMode("near")} />
-           <NavItem icon={<Star size={18}/>} label="Subscription Status" active={viewMode === "subscriptions"} open={sidebarOpen} onClick={() => setViewMode("subscriptions")} />
+           <NavItem 
+             icon={<Zap size={18}/>} 
+             label="Near You" 
+             active={viewMode === "near"} 
+             open={sidebarOpen} 
+             onClick={() => {
+               if (!currentUser) {
+                 toast.error("Please log in to see restaurants near you.");
+                 navigate('/login');
+                 return;
+               }
+               setViewMode("near");
+             }} 
+           />
+           <NavItem 
+             icon={<Star size={18}/>} 
+             label="Subscription Status" 
+             active={viewMode === "subscriptions"} 
+             open={sidebarOpen} 
+             onClick={() => {
+               if (!currentUser) {
+                 toast.error("Please log in to see your subscription status.");
+                 navigate('/login');
+                 return;
+               }
+               setViewMode("subscriptions");
+             }} 
+           />
         </nav>
       </aside>
 
       <main className="flex-1 overflow-y-auto pb-20 scroll-smooth">
         <div className="sticky top-0 bg-white/80 backdrop-blur-md z-40 p-6 border-b border-gray-50 text-left">
-            {viewMode === "subscriptions" ? (
+             {viewMode === "subscriptions" ? (
               <h2 className="text-xl font-black italic tracking-tighter uppercase text-[#1A2316]">
                 Subscription Status<span className="text-[#FBBF24]">.</span>
+              </h2>
+            ) : viewMode === "near" ? (
+              <h2 className="text-xl font-black italic tracking-tighter uppercase text-[#1A2316]">
+                Near You<span className="text-[#10B981]">.</span>
               </h2>
             ) : (
               <div className="max-w-xl relative">
@@ -198,6 +315,60 @@ const ExploreFood = ({ currentUser, handleAddToCart }) => {
                 </div>
               )}
             </div>
+          ) : viewMode === "near" ? (
+            <div className="bg-white p-8 rounded-[35px] border border-gray-100 shadow-sm animate-in fade-in duration-300">
+              <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-2">
+                  <Zap className="text-[#10B981]" size={22}/>
+                  <h3 className="text-xl font-black text-[#1A2316] uppercase italic tracking-tight">Restaurants Near You</h3>
+                </div>
+                {currentUser?.accountLocation && (
+                  <button 
+                    onClick={() => setShowLocationModal(true)} 
+                    className="flex items-center gap-1.5 px-4 py-2 border border-gray-200 hover:border-gray-400 rounded-xl text-[9px] font-black uppercase tracking-wider text-gray-500 transition-all"
+                  >
+                    📍 Change Location
+                  </button>
+                )}
+              </div>
+
+              {loadingNearby ? (
+                <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+                  <div className="w-8 h-8 border-4 border-[#10B981] border-t-transparent rounded-full animate-spin mb-4" />
+                  <p className="font-black text-[9px] uppercase tracking-widest animate-pulse">Finding chefs near you...</p>
+                </div>
+              ) : locationRequired ? (
+                <div className="flex flex-col items-center py-16 text-gray-300 text-center max-w-sm mx-auto">
+                  <MapPin size={56} className="mb-4 opacity-20 text-[#10B981]" />
+                  <p className="font-black text-[10px] uppercase tracking-widest text-[#1A2316]">Location Required</p>
+                  <p className="text-[9px] text-gray-400 mt-2 font-bold">Please set your account location to discover premium home kitchens within 8 km.</p>
+                  <button
+                    onClick={() => setShowLocationModal(true)}
+                    className="mt-6 bg-[#1A2316] text-[#FBBF24] px-8 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:scale-105 transition-all shadow-md"
+                  >
+                    Set Location Now
+                  </button>
+                </div>
+              ) : nearbyChefs.length === 0 ? (
+                <div className="flex flex-col items-center py-16 text-gray-300 text-center max-w-sm mx-auto">
+                  <ChefHat size={56} className="mb-4 opacity-20 text-gray-400" />
+                  <p className="font-black text-[10px] uppercase tracking-widest text-[#1A2316]">No Restaurants Found</p>
+                  <p className="text-[9px] text-gray-400 mt-2 font-bold">No restaurants found near you within 8 km. Try checking the Trending tab instead.</p>
+                  <button
+                    onClick={() => setViewMode("trending")}
+                    className="mt-6 bg-[#1A2316] text-[#FBBF24] px-8 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:scale-105 transition-all shadow-md"
+                  >
+                    View Trending
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+                  {nearbyChefs.map(chef => (
+                    <ChefCard key={chef._id} chef={chef} onClick={(e) => goToChef(e, chef._id)} />
+                  ))}
+                </div>
+              )}
+            </div>
           ) : (
             <>
               <section className="mb-12">
@@ -232,18 +403,7 @@ const ExploreFood = ({ currentUser, handleAddToCart }) => {
                           key={food._id} 
                           whileHover={{ scale: 1.02 }} 
                           onClick={() => {
-                            handleAddToCart({
-                              _id: food._id,
-                              name: food.name,
-                              price: food.price,
-                              basePrice: food.price,
-                              img: food.img,
-                              chefId: food.chefId?._id || food.chefId || food.chef,
-                              chefName: food.chef || 'Chef',
-                              qty: 1,
-                              portion: 'Full'
-                            });
-                            navigate('/cart');
+                            navigate(`/order/${food._id}`);
                           }} 
                           className="min-w-[340px] bg-[#1A2316] p-4 rounded-[35px] flex gap-5 items-center cursor-pointer group transition-all shadow-xl"
                         >
@@ -269,18 +429,7 @@ const ExploreFood = ({ currentUser, handleAddToCart }) => {
                         key={food._id} 
                         food={food} 
                         onCardClick={() => {
-                          handleAddToCart({
-                            _id: food._id,
-                            name: food.name,
-                            price: food.price,
-                            basePrice: food.price,
-                            img: food.img,
-                            chefId: food.chefId?._id || food.chefId || food.chef,
-                            chefName: food.chef || 'Chef',
-                            qty: 1,
-                            portion: 'Full'
-                          });
-                          navigate('/cart');
+                          navigate(`/order/${food._id}`);
                         }} 
                         onChefClick={(e) => goToChef(e, food.chefId)} 
                       />
@@ -291,6 +440,44 @@ const ExploreFood = ({ currentUser, handleAddToCart }) => {
           )}
         </div>
       </main>
+
+      {/* Location Picker Modal Overlay */}
+      {showLocationModal && (
+        <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-[35px] p-8 max-w-xl w-full shadow-2xl animate-in zoom-in duration-300 relative text-left">
+            <button 
+              onClick={() => setShowLocationModal(false)} 
+              className="absolute top-6 right-6 p-2 bg-gray-100 hover:bg-gray-200 rounded-full text-gray-500 transition-all"
+            >
+              <X size={18} />
+            </button>
+            <h3 className="font-black text-xl uppercase italic mb-1 text-[#1A2316]">Set Your Location</h3>
+            <p className="text-xs text-gray-400 font-bold mb-6">Discover home chefs and premium kitchens near you (within 8 km radius).</p>
+            
+            <div className="mb-6">
+              <MapPicker 
+                onLocationSelected={(loc) => setSelectedLocation(loc)} 
+                initialLocation={currentUser?.accountLocation?.coordinates}
+              />
+            </div>
+            
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setShowLocationModal(false)} 
+                className="flex-1 py-4 bg-gray-100 rounded-2xl font-black text-[10px] uppercase tracking-wider hover:bg-gray-200 transition-all"
+              >
+                Skip for Now
+              </button>
+              <button
+                onClick={handleSaveLocation}
+                className="flex-1 py-4 bg-[#10B981] text-white rounded-2xl font-black text-[10px] uppercase tracking-wider hover:bg-[#10B981]/90 transition-all shadow-lg"
+              >
+                Confirm Location
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -309,6 +496,33 @@ const FoodCard = ({ food, onCardClick, onChefClick }) => (
             <div className="w-9 h-9 bg-gray-50 rounded-xl flex items-center justify-center"><ArrowRight size={16}/></div>
         </div>
      </div>
+  </motion.div>
+);
+
+const ChefCard = ({ chef, onClick }) => (
+  <motion.div 
+    whileHover={{ y: -8 }} 
+    onClick={onClick} 
+    className="bg-white rounded-[40px] border border-gray-100 shadow-sm hover:shadow-xl overflow-hidden cursor-pointer flex flex-col h-full text-left p-5 transition-all"
+  >
+    <div className="relative h-44 rounded-[28px] overflow-hidden mb-4 bg-gray-50">
+      <img src={getImageUrl(chef.img || chef.kitchenImage)} className="w-full h-full object-cover" alt={chef.name}/>
+      {chef.distanceInKm !== undefined && (
+        <div className="absolute top-3 left-3 bg-[#10B981] text-white px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest shadow-sm">
+          📍 {chef.distanceInKm} km away
+        </div>
+      )}
+    </div>
+    <div className="flex-1 flex flex-col">
+      <h3 className="font-black text-[#1A2316] uppercase text-sm italic mb-1 truncate">{chef.kitchenName || `${chef.name}'s Kitchen`}</h3>
+      <p className="text-[9px] text-gray-400 font-bold uppercase mb-3">Chef {chef.name}</p>
+      <div className="mt-auto flex items-center justify-between pt-4 border-t border-gray-50">
+        <div className="flex items-center gap-1 text-[9px] font-bold text-gray-500">
+          <Star size={10} fill="#FBBF24" className="text-[#FBBF24]"/> {chef.rating.toFixed(1)} • {chef.city}
+        </div>
+        <div className="w-9 h-9 bg-gray-50 rounded-xl flex items-center justify-center"><ArrowRight size={16}/></div>
+      </div>
+    </div>
   </motion.div>
 );
 

@@ -3,6 +3,7 @@ import { ChefHat, Eye, EyeOff, ArrowRight, Bike, KeyRound, RefreshCw, X, AlertCi
 import { useNavigate } from 'react-router-dom';
 import API from './api';
 import { toast } from './utils/toast';
+import MapPicker from './components/MapPicker';
 
 const Auth = ({ onLogin, isModal = false, currentUser }) => {
   const navigate = useNavigate();
@@ -17,6 +18,7 @@ const Auth = ({ onLogin, isModal = false, currentUser }) => {
   // Custom Alert state
   const [formError, setFormError] = useState(null);
   const [formSuccess, setFormSuccess] = useState(null);
+  const [accountLocation, setAccountLocation] = useState(null);
 
   useEffect(() => {
     if (isModal) return;
@@ -89,6 +91,12 @@ const Auth = ({ onLogin, isModal = false, currentUser }) => {
           return;
         }
 
+        if (role === 'user' && !accountLocation) {
+          showAlert("Please pin your location on the map to proceed with signup!", "error");
+          setIsSubmitting(false);
+          return;
+        }
+
         const res = await API.post('/api/auth/signup', {
           name: formData.name,
           email: formData.email,
@@ -96,7 +104,8 @@ const Auth = ({ onLogin, isModal = false, currentUser }) => {
           cnic: formData.cnic,
           city: formData.city,
           password: formData.password,
-          role
+          role,
+          accountLocation
         });
 
         showAlert("Verification OTP has been sent to your email!", "success");
@@ -276,6 +285,13 @@ const Auth = ({ onLogin, isModal = false, currentUser }) => {
                   <option value="Karachi">Karachi</option>
                   <option value="Islamabad">Islamabad</option>
                 </select>
+
+                {role === 'user' && (
+                  <div className="border border-gray-150 p-4 rounded-2xl bg-white space-y-2 mb-2 relative z-30">
+                    <p className="text-xs font-black uppercase text-[#1A2316]">Select Your Account Location</p>
+                    <MapPicker onLocationSelected={(loc) => setAccountLocation(loc)} />
+                  </div>
+                )}
                 
                 <div className="relative">
                   <input type={showPassword ? "text" : "password"} name="password" placeholder="Password" onChange={handleInput} className="w-full px-5 py-3 bg-gray-50 rounded-xl outline-none font-bold text-sm border-2 border-transparent focus:border-[#FBBF24]/20" required />

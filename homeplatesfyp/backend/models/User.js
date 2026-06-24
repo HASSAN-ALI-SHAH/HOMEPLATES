@@ -55,7 +55,32 @@ const userSchema = new mongoose.Schema({
     weeklyDinnerPrice: { type: Number },
     monthlyBreakfastPrice: { type: Number },
     monthlyLunchPrice: { type: Number },
-    monthlyDinnerPrice: { type: Number }
+    monthlyDinnerPrice: { type: Number },
+
+    // Geospatial Fields for Near You Feature
+    accountLocation: {
+        type: {
+            type: String,
+            enum: ['Point']
+        },
+        coordinates: {
+            type: [Number] // [longitude, latitude] — GeoJSON format
+        },
+        formattedAddress: String
+    },
+    kitchenLocationGeo: {
+        type: {
+            type: String,
+            enum: ['Point']
+        },
+        coordinates: {
+            type: [Number] // [longitude, latitude] — GeoJSON format
+        }
+    }
 }, { timestamps: true });
+
+// Create Geospatial Indexes for 8km Radius Queries
+userSchema.index({ accountLocation: '2dsphere' });
+userSchema.index({ kitchenLocationGeo: '2dsphere' });
 
 module.exports = mongoose.model('User', userSchema);

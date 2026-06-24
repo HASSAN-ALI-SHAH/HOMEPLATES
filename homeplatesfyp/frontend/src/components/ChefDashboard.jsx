@@ -47,8 +47,8 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
 
   // ─── Rider live-tracking state ──────────────────────────────────────────────
   const [riderLiveLocation, setRiderLiveLocation] = useState(null); // { lat, lng, orderId }
-  const [chefOwnCoords,     setChefOwnCoords]     = useState(null); // geocoded kitchen
-  
+  const [chefOwnCoords, setChefOwnCoords] = useState(null); // geocoded kitchen
+
   const [kitchenActive, setKitchenActive] = useState(currentUser.isActive !== false);
   const [subscribersFilter, setSubscribersFilter] = useState('active');
   const [notifications, setNotifications] = useState(() => {
@@ -336,13 +336,13 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
         setRiderAlert('✅ Order successfully delivered to the customer! Payment has been added to your wallet.');
         setTimeout(() => setRiderAlert(null), 10000);
         fetchAll(); // refresh wallet balance
-      // B12: Rider cancelled
+        // B12: Rider cancelled
       } else if (status === 'rider_cancelled') {
         setRiderAlert('⚠️ Rider cancelled this order. Please check Orders tab to re-assign.');
         setTimeout(() => setRiderAlert(null), 12000);
         addNotification('⚠️ Rider Cancelled', message || 'Rider cancelled order. Action needed.', `order_rider_cancelled_${orderId}`);
         fetchAll();
-      // B10: Delivery failed — chef action required
+        // B10: Delivery failed — chef action required
       } else if (status === 'delivery-failed') {
         setRiderAlert('❌ Delivery failed! Go to Orders tab to re-assign a rider or cancel the order.');
         setTimeout(() => setRiderAlert(null), 15000);
@@ -476,8 +476,8 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
       await API.delete(`/api/chef/dish/${dishId}`, authH);
       setMenuItems(prev => prev.filter(d => d._id !== dishId));
       toast.success('Dish deleted successfully!');
-    } catch (e) { 
-      toast.error('Delete failed: ' + (e.response?.data?.message || e.response?.data?.error || e.message)); 
+    } catch (e) {
+      toast.error('Delete failed: ' + (e.response?.data?.message || e.response?.data?.error || e.message));
     }
   };
 
@@ -562,8 +562,8 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
               className="w-full border-2 border-gray-200 rounded-2xl p-3 text-sm font-bold outline-none focus:border-red-400 resize-none h-24 mb-4 font-sans"
             />
             <div className="flex gap-3 font-sans">
-              <button 
-                onClick={() => { setRejectOrderModal(null); setRejectReason(''); }} 
+              <button
+                onClick={() => { setRejectOrderModal(null); setRejectReason(''); }}
                 className="flex-1 py-3 bg-gray-100 rounded-2xl font-black text-[10px] uppercase hover:bg-gray-200 transition-all"
               >
                 Cancel
@@ -588,7 +588,7 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
           <h1 className="text-xl font-black tracking-tighter uppercase text-[#FBBF24]">HomePlates</h1>
         </div>
         <nav className="flex-1 space-y-1">
-          {[['overview','Dashboard',LayoutDashboard],['orders','Orders',Clock],['menu','My Menu',ScrollText],['recipes','Recipes',BookOpen],['subscriptions','Subscriptions',Package],['wallet','Wallet',Wallet],['calculator','Profit Engine',Calculator],['profile','Profile',User]].map(([id,label,Icon]) => (
+          {[['overview', 'Dashboard', LayoutDashboard], ['orders', 'Orders', Clock], ['menu', 'My Menu', ScrollText], ['recipes', 'Recipes', BookOpen], ['subscriptions', 'Subscriptions', Package], ['wallet', 'Wallet', Wallet], ['calculator', 'Profit Engine', Calculator], ['profile', 'Profile', User]].map(([id, label, Icon]) => (
             <button key={id} onClick={() => setActiveTab(id)} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all ${activeTab === id ? 'bg-[#FBBF24] text-[#1A2316]' : 'text-gray-400 hover:bg-white/5'}`}>
               <Icon size={18} /> {label}
               {id === 'orders' && pending > 0 && <span className="ml-auto bg-red-500 text-white text-[8px] w-5 h-5 rounded-full flex items-center justify-center">{pending}</span>}
@@ -629,7 +629,7 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
               <span className={`text-[10px] font-black uppercase ${kitchenActive ? 'text-green-600' : 'text-red-500'}`}>
                 Kitchen: {kitchenActive ? 'Online' : 'Offline'}
               </span>
-              <button 
+              <button
                 onClick={toggleKitchenStatus}
                 className="transition-all flex items-center"
                 title={kitchenActive ? "Go Offline" : "Go Online"}
@@ -642,7 +642,7 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
               </button>
             </div>
             <button onClick={fetchAll} className="p-2.5 bg-white rounded-2xl shadow-sm border border-gray-100" title="Refresh"><RefreshCw size={18} className="text-gray-400" /></button>
-            
+
             {/* Notifications Bell */}
             <div className="relative">
               <button onClick={() => setShowNoti(!showNoti)} className="relative p-2.5 bg-white rounded-2xl shadow-sm border border-gray-100 flex items-center justify-center">
@@ -678,7 +678,7 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
             </div>
 
             <div className="flex items-center gap-3 bg-white p-2 pr-5 rounded-full shadow-sm border border-gray-100">
-              <div className="w-9 h-9 bg-[#1A2316] rounded-full flex items-center justify-center font-black text-[#FBBF24]">{(currentUser.name||'C').charAt(0)}</div>
+              <div className="w-9 h-9 bg-[#1A2316] rounded-full flex items-center justify-center font-black text-[#FBBF24]">{(currentUser.name || 'C').charAt(0)}</div>
               <p className="text-[10px] font-black uppercase">{currentUser.name}</p>
             </div>
           </div>
@@ -720,23 +720,23 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
             )}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-5">
               {[
-                ['Wallet', `PKR ${(walletData.totalBalance||0).toLocaleString()}`, TrendingUp, 'text-green-500'],
+                ['Wallet', `PKR ${(walletData.totalBalance || 0).toLocaleString()}`, TrendingUp, 'text-green-500'],
                 ['Locked Sub Earnings', `PKR ${lockedEarnings.toLocaleString()}`, Wallet, 'text-purple-500'],
                 ['Pending', pending, Clock, 'text-orange-500'],
-                ['Rating', (currentUser.rating||0).toFixed(1), Star, 'text-yellow-500'],
+                ['Rating', (currentUser.rating || 0).toFixed(1), Star, 'text-yellow-500'],
                 ['Delivered', delivered, CheckCircle, 'text-blue-500']
-              ].map(([l,v,Icon,c],i) => (
+              ].map(([l, v, Icon, c], i) => (
                 <div key={i} className="bg-white p-6 rounded-[30px] shadow-sm border border-gray-100"><Icon size={22} className={`${c} mb-3`} /><p className="text-gray-400 font-black text-[9px] uppercase">{l}</p><h3 className="text-2xl font-black">{v}</h3></div>
               ))}
             </div>
             {pending > 0 && (
               <div className="bg-white p-8 rounded-[30px] shadow-sm border-l-4 border-orange-400">
                 <h4 className="font-black uppercase text-sm mb-4 text-orange-500">⚡ {pending} Pending Order{pending > 1 ? 's' : ''}</h4>
-                {orders.filter(o => o.status === 'pending').slice(0,3).map(o => (
+                {orders.filter(o => o.status === 'pending').slice(0, 3).map(o => (
                   <div key={o._id} className="flex items-center justify-between py-3 border-b border-gray-50 last:border-0">
-                    <div><p className="font-black">{o.user?.name||'Customer'}</p><p className="text-xs text-gray-400">{o.items?.length} items · PKR {o.totalAmount}</p></div>
+                    <div><p className="font-black">{o.user?.name || 'Customer'}</p><p className="text-xs text-gray-400">{o.items?.length} items · PKR {o.totalAmount}</p></div>
                     <div className="flex gap-2">
-                      <button onClick={() => updateStatus(o._id,'accepted')} className="bg-green-500 text-white px-4 py-2 rounded-xl text-[10px] font-black">Accept</button>
+                      <button onClick={() => updateStatus(o._id, 'accepted')} className="bg-green-500 text-white px-4 py-2 rounded-xl text-[10px] font-black">Accept</button>
                       <button onClick={() => setRejectOrderModal({ orderId: o._id })} className="bg-red-100 text-red-600 px-4 py-2 rounded-xl text-[10px] font-black">Reject</button>
                     </div>
                   </div>
@@ -752,7 +752,7 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
             {/* ── Rider Live Tracker (shown when a rider is en-route) ──────────── */}
             {riderLiveLocation && (() => {
               const trackedOrder = orders.find(o => o._id === riderLiveLocation.orderId);
-              const isEnRoute = trackedOrder && ['ready-for-pickup','picked-up','out-for-delivery'].includes(trackedOrder.status);
+              const isEnRoute = trackedOrder && ['ready-for-pickup', 'picked-up', 'out-for-delivery'].includes(trackedOrder.status);
               if (!isEnRoute) return null;
               return (
                 <div className="bg-white p-6 rounded-[30px] border-l-4 border-[#FBBF24] shadow-sm space-y-4">
@@ -764,7 +764,7 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
                       </h4>
                     </div>
                     <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-xl">
-                      <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"/>
+                      <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
                       <span className="text-[9px] font-black text-emerald-600 uppercase">Live</span>
                     </div>
                   </div>
@@ -785,200 +785,200 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
 
             {loading ? <div className="text-center py-20 text-gray-400 font-black uppercase animate-pulse">Loading...</div>
               : orders.length === 0 ? <div className="bg-white p-16 rounded-[40px] flex flex-col items-center text-gray-300"><Clock size={40} className="mb-4 opacity-20" /><p className="font-black text-[10px] uppercase">No Orders Yet</p></div>
-              : orders.map(o => (
-                <div key={o._id} className="bg-white p-7 rounded-[30px] shadow-sm border border-gray-100">
-                  <div className="flex flex-wrap justify-between items-start gap-3 mb-4">
-                    <div><p className="font-black text-lg">{o.user?.name||'Customer'}</p><p className="text-xs text-gray-400">{o.user?.phone} · {o.deliveryAddress||'No address'}</p><p className="text-xs text-gray-400">{new Date(o.orderDate).toLocaleString()}</p></div>
-                    <div className="text-right"><span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase ${badge(o.status)}`}>{o.status}</span><p className="font-black text-xl mt-2">PKR {o.totalAmount}</p></div>
-                  </div>
-                  {o.isSubscriptionOrder && (
-                    <div className="mb-2 bg-[#FBBF24]/10 text-[#1A2316] px-4 py-2.5 rounded-xl border border-[#FBBF24]/20 text-xs font-black uppercase tracking-wider flex items-center gap-2 w-fit">
-                      📅 Daily Subscription Meal Ticket
+                : orders.map(o => (
+                  <div key={o._id} className="bg-white p-7 rounded-[30px] shadow-sm border border-gray-100">
+                    <div className="flex flex-wrap justify-between items-start gap-3 mb-4">
+                      <div><p className="font-black text-lg">{o.user?.name || 'Customer'}</p><p className="text-xs text-gray-400">{o.user?.phone} · {o.deliveryAddress || 'No address'}</p><p className="text-xs text-gray-400">{new Date(o.orderDate).toLocaleString()}</p></div>
+                      <div className="text-right"><span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase ${badge(o.status)}`}>{o.status}</span><p className="font-black text-xl mt-2">PKR {o.totalAmount}</p></div>
                     </div>
-                  )}
-                  <div className="border-t border-gray-50 pt-3 mb-4 space-y-1">
-                    {o.isSubscriptionOrder ? (
-                      <p className="text-xs text-gray-500 font-bold">Please check subscription details to prepare the custom meal plan for today.</p>
-                    ) : (
-                      o.items?.map((item,i) => <div key={i} className="flex justify-between text-sm"><span className="text-gray-600 font-bold">{item.dishId?.name||'Item'} ({item.portion||'Full'}) × {item.quantity}</span><span className="font-black">PKR {item.price*item.quantity}</span></div>)
+                    {o.isSubscriptionOrder && (
+                      <div className="mb-2 bg-[#FBBF24]/10 text-[#1A2316] px-4 py-2.5 rounded-xl border border-[#FBBF24]/20 text-xs font-black uppercase tracking-wider flex items-center gap-2 w-fit">
+                        📅 Daily Subscription Meal Ticket
+                      </div>
                     )}
-                  </div>
-                  {o.status === 'pending' && (
-                    <div className="flex gap-3">
-                      <button onClick={() => updateStatus(o._id,'accepted')} className="flex-1 bg-green-500 text-white py-3 rounded-2xl font-black text-[10px] flex items-center justify-center gap-2">
-                        <CheckSquare size={14}/>Accept Order
-                      </button>
-                      <button onClick={() => setRejectOrderModal({ orderId: o._id })} className="flex-1 bg-red-50 text-red-600 py-3 rounded-2xl font-black text-[10px] flex items-center justify-center gap-2">
-                        <XSquare size={14}/>Reject
-                      </button>
+                    <div className="border-t border-gray-50 pt-3 mb-4 space-y-1">
+                      {o.isSubscriptionOrder ? (
+                        <p className="text-xs text-gray-500 font-bold">Please check subscription details to prepare the custom meal plan for today.</p>
+                      ) : (
+                        o.items?.map((item, i) => <div key={i} className="flex justify-between text-sm"><span className="text-gray-600 font-bold">{item.dishId?.name || 'Item'} ({item.portion || 'Full'}) × {item.quantity}</span><span className="font-black">PKR {item.price * item.quantity}</span></div>)
+                      )}
                     </div>
-                  )}
-                  {o.status === 'accepted' && (
-                    <button onClick={() => updateStatus(o._id,'preparing')} className="w-full bg-blue-500 text-white py-3 rounded-2xl font-black text-[10px] flex items-center justify-center gap-2">
-                      🍳 Start Preparing Food
-                    </button>
-                  )}
-                  {o.status === 'preparing' && (
-                    <button onClick={() => updateStatus(o._id,'ready-for-pickup')} className="w-full bg-[#FBBF24] text-[#1A2316] py-3 rounded-2xl font-black text-[10px] flex items-center justify-center gap-2 hover:scale-[1.01] transition-all">
-                      📦 Request Rider for Pickup {o.isSubscriptionOrder ? '(Subscription)' : ''}
-                    </button>
-                  )}
-                  {/* B10: Delivery Failed — Action Required */}
-                  {o.status === 'delivery-failed' && (
-                    <div className="bg-red-50 border-2 border-red-300 rounded-2xl p-4 space-y-3">
-                      <p className="text-red-700 font-black text-[10px] uppercase tracking-widest">⚠️ Delivery Failed — Action Required</p>
-                      <p className="text-xs text-red-600 font-bold">
-                        {o.failureReason ? `Reason: ${o.failureReason}` : 'Rider could not complete this delivery.'}
-                      </p>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={async () => {
-                            try {
-                              const token = localStorage.getItem('token');
-                              await fetch(`${window.API_URL}/api/orders/${o._id}/resolve-failure`, {
-                                method: 'PATCH',
-                                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                                body: JSON.stringify({ action: 'reassign' })
-                              });
-                              toast.success('Order re-broadcast to available riders!');
-                              fetchAll();
-                            } catch (e) { toast.error('Error re-assigning'); }
-                          }}
-                          className="flex-1 py-2.5 bg-[#FBBF24] text-[#1A2316] rounded-xl font-black text-[9px] uppercase hover:opacity-90 transition-all"
-                        >
-                          🔄 Re-assign Rider
+                    {o.status === 'pending' && (
+                      <div className="flex gap-3">
+                        <button onClick={() => updateStatus(o._id, 'accepted')} className="flex-1 bg-green-500 text-white py-3 rounded-2xl font-black text-[10px] flex items-center justify-center gap-2">
+                          <CheckSquare size={14} />Accept Order
                         </button>
-                        <button
-                          onClick={async () => {
-                            try {
-                              const token = localStorage.getItem('token');
-                              await fetch(`${window.API_URL}/api/orders/${o._id}/resolve-failure`, {
-                                method: 'PATCH',
-                                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                                body: JSON.stringify({ action: 'cancel', cancellationReason: 'Cancelled after delivery failure.' })
-                              });
-                              toast.success('Order cancelled.');
-                              fetchAll();
-                            } catch (e) { toast.error('Error cancelling order'); }
-                          }}
-                          className="flex-1 py-2.5 bg-red-100 text-red-700 rounded-xl font-black text-[9px] uppercase hover:bg-red-200 transition-all"
-                        >
-                          ✕ Cancel Order
+                        <button onClick={() => setRejectOrderModal({ orderId: o._id })} className="flex-1 bg-red-50 text-red-600 py-3 rounded-2xl font-black text-[10px] flex items-center justify-center gap-2">
+                          <XSquare size={14} />Reject
                         </button>
                       </div>
-                    </div>
-                  )}
+                    )}
+                    {o.status === 'accepted' && (
+                      <button onClick={() => updateStatus(o._id, 'preparing')} className="w-full bg-blue-500 text-white py-3 rounded-2xl font-black text-[10px] flex items-center justify-center gap-2">
+                        🍳 Start Preparing Food
+                      </button>
+                    )}
+                    {o.status === 'preparing' && (
+                      <button onClick={() => updateStatus(o._id, 'ready-for-pickup')} className="w-full bg-[#FBBF24] text-[#1A2316] py-3 rounded-2xl font-black text-[10px] flex items-center justify-center gap-2 hover:scale-[1.01] transition-all">
+                        📦 Request Rider for Pickup {o.isSubscriptionOrder ? '(Subscription)' : ''}
+                      </button>
+                    )}
+                    {/* B10: Delivery Failed — Action Required */}
+                    {o.status === 'delivery-failed' && (
+                      <div className="bg-red-50 border-2 border-red-300 rounded-2xl p-4 space-y-3">
+                        <p className="text-red-700 font-black text-[10px] uppercase tracking-widest">⚠️ Delivery Failed — Action Required</p>
+                        <p className="text-xs text-red-600 font-bold">
+                          {o.failureReason ? `Reason: ${o.failureReason}` : 'Rider could not complete this delivery.'}
+                        </p>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={async () => {
+                              try {
+                                const token = localStorage.getItem('token');
+                                await fetch(`${window.API_URL}/api/orders/${o._id}/resolve-failure`, {
+                                  method: 'PATCH',
+                                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                  body: JSON.stringify({ action: 'reassign' })
+                                });
+                                toast.success('Order re-broadcast to available riders!');
+                                fetchAll();
+                              } catch (e) { toast.error('Error re-assigning'); }
+                            }}
+                            className="flex-1 py-2.5 bg-[#FBBF24] text-[#1A2316] rounded-xl font-black text-[9px] uppercase hover:opacity-90 transition-all"
+                          >
+                            🔄 Re-assign Rider
+                          </button>
+                          <button
+                            onClick={async () => {
+                              try {
+                                const token = localStorage.getItem('token');
+                                await fetch(`${window.API_URL}/api/orders/${o._id}/resolve-failure`, {
+                                  method: 'PATCH',
+                                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                  body: JSON.stringify({ action: 'cancel', cancellationReason: 'Cancelled after delivery failure.' })
+                                });
+                                toast.success('Order cancelled.');
+                                fetchAll();
+                              } catch (e) { toast.error('Error cancelling order'); }
+                            }}
+                            className="flex-1 py-2.5 bg-red-100 text-red-700 rounded-xl font-black text-[9px] uppercase hover:bg-red-200 transition-all"
+                          >
+                            ✕ Cancel Order
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
-                  {/* B12/B1: Rider Cancelled — Action Required */}
-                  {o.status === 'rider_cancelled' && (
-                    <div className="bg-orange-50 border-2 border-orange-300 rounded-2xl p-4 space-y-3">
-                      <p className="text-orange-700 font-black text-[10px] uppercase tracking-widest">⚠️ Rider Cancelled After Pickup — Re-assign Needed</p>
-                      <p className="text-xs text-orange-600 font-bold">The assigned rider cancelled this order. A penalty has been applied to the rider. Please re-assign to a new available rider or cancel the order.</p>
-                      <div className="flex gap-2">
+                    {/* B12/B1: Rider Cancelled — Action Required */}
+                    {o.status === 'rider_cancelled' && (
+                      <div className="bg-orange-50 border-2 border-orange-300 rounded-2xl p-4 space-y-3">
+                        <p className="text-orange-700 font-black text-[10px] uppercase tracking-widest">⚠️ Rider Cancelled After Pickup — Re-assign Needed</p>
+                        <p className="text-xs text-orange-600 font-bold">The assigned rider cancelled this order. A penalty has been applied to the rider. Please re-assign to a new available rider or cancel the order.</p>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={async () => {
+                              try {
+                                const token = localStorage.getItem('token');
+                                const res = await fetch(`${window.API_URL}/api/orders/${o._id}/reassign-after-cancel`, {
+                                  method: 'PATCH',
+                                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+                                });
+                                if (res.ok) {
+                                  toast.success('✅ Order re-broadcast! Available riders have been notified.');
+                                  fetchAll();
+                                } else {
+                                  const err = await res.json();
+                                  toast.error(err.message || 'Re-broadcast failed');
+                                }
+                              } catch (e) { toast.error('Error re-assigning order'); }
+                            }}
+                            className="flex-1 py-2.5 bg-[#FBBF24] text-[#1A2316] rounded-xl font-black text-[9px] uppercase hover:opacity-90 transition-all"
+                          >
+                            🔄 Find New Rider
+                          </button>
+                          <button
+                            onClick={() => updateStatus(o._id, 'cancelled', 'Cancelled after rider refused to deliver.')}
+                            className="flex-1 py-2.5 bg-red-100 text-red-700 rounded-xl font-black text-[9px] uppercase hover:bg-red-200 transition-all"
+                          >
+                            ✕ Cancel Order
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* B11: Stuck in ready-for-pickup (no rider assigned) — Re-broadcast */}
+                    {o.status === 'ready-for-pickup' && !o.rider && (
+                      <div className="flex items-center justify-between bg-indigo-50 border border-indigo-200 px-4 py-3 rounded-2xl">
+                        <span className="text-indigo-600 font-black text-[10px] uppercase">⏳ Awaiting Rider — No rider found yet</span>
                         <button
                           onClick={async () => {
                             try {
                               const token = localStorage.getItem('token');
-                              const res = await fetch(`${window.API_URL}/api/orders/${o._id}/reassign-after-cancel`, {
+                              await fetch(`${window.API_URL}/api/orders/${o._id}/rebroadcast`, {
                                 method: 'PATCH',
                                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
                               });
-                              if (res.ok) {
-                                toast.success('✅ Order re-broadcast! Available riders have been notified.');
-                                fetchAll();
-                              } else {
-                                const err = await res.json();
-                                toast.error(err.message || 'Re-broadcast failed');
-                              }
-                            } catch (e) { toast.error('Error re-assigning order'); }
+                              toast.success('Re-broadcast sent to available riders!');
+                            } catch (e) { toast.error('Re-broadcast failed'); }
                           }}
-                          className="flex-1 py-2.5 bg-[#FBBF24] text-[#1A2316] rounded-xl font-black text-[9px] uppercase hover:opacity-90 transition-all"
+                          className="text-[9px] font-black uppercase bg-indigo-600 text-white px-4 py-2 rounded-xl hover:bg-indigo-700 transition-all ml-3"
                         >
-                          🔄 Find New Rider
-                        </button>
-                        <button
-                          onClick={() => updateStatus(o._id, 'cancelled', 'Cancelled after rider refused to deliver.')}
-                          className="flex-1 py-2.5 bg-red-100 text-red-700 rounded-xl font-black text-[9px] uppercase hover:bg-red-200 transition-all"
-                        >
-                          ✕ Cancel Order
+                          📡 Re-broadcast
                         </button>
                       </div>
-                    </div>
-                  )}
-
-                  {/* B11: Stuck in ready-for-pickup (no rider assigned) — Re-broadcast */}
-                  {o.status === 'ready-for-pickup' && !o.rider && (
-                    <div className="flex items-center justify-between bg-indigo-50 border border-indigo-200 px-4 py-3 rounded-2xl">
-                      <span className="text-indigo-600 font-black text-[10px] uppercase">⏳ Awaiting Rider — No rider found yet</span>
-                      <button
-                        onClick={async () => {
-                          try {
-                            const token = localStorage.getItem('token');
-                            await fetch(`${window.API_URL}/api/orders/${o._id}/rebroadcast`, {
-                              method: 'PATCH',
-                              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
-                            });
-                            toast.success('Re-broadcast sent to available riders!');
-                          } catch (e) { toast.error('Re-broadcast failed'); }
-                        }}
-                        className="text-[9px] font-black uppercase bg-indigo-600 text-white px-4 py-2 rounded-xl hover:bg-indigo-700 transition-all ml-3"
-                      >
-                        📡 Re-broadcast
-                      </button>
-                    </div>
-                  )}
-                  {o.status === 'ready-for-pickup' && o.rider && (
-                    <div className="flex items-center gap-3 bg-indigo-50 border border-indigo-200 px-4 py-3 rounded-2xl">
-                      <span className="text-indigo-600 font-black text-[10px] uppercase">🚴 Rider {o.rider.name} is heading to your kitchen</span>
-                    </div>
-                  )}
-                  {o.status === 'picked-up' && (
-                    <div className="flex items-center gap-3 bg-teal-50 border border-teal-200 px-4 py-3 rounded-2xl">
-                      <span className="text-teal-600 font-black text-[10px] uppercase">📦 Handed over to Rider</span>
-                    </div>
-                  )}
-                  {o.status === 'out-for-delivery' && (
-                    <div className="flex items-center gap-3 bg-purple-50 border border-purple-200 px-4 py-3 rounded-2xl">
-                      <span className="text-purple-600 font-black text-[10px] uppercase">🚴 Out for Delivery</span>
-                    </div>
-                  )}
-                  {o.status === 'delivered' && (
-                    <div className="flex items-center gap-3 bg-green-50 border border-green-200 px-4 py-3 rounded-2xl">
-                      <span className="text-green-600 font-black text-[10px] uppercase">✅ Delivered by Rider</span>
-                    </div>
-                  )}
-                </div>
-              ))}
+                    )}
+                    {o.status === 'ready-for-pickup' && o.rider && (
+                      <div className="flex items-center gap-3 bg-indigo-50 border border-indigo-200 px-4 py-3 rounded-2xl">
+                        <span className="text-indigo-600 font-black text-[10px] uppercase">🚴 Rider {o.rider.name} is heading to your kitchen</span>
+                      </div>
+                    )}
+                    {o.status === 'picked-up' && (
+                      <div className="flex items-center gap-3 bg-teal-50 border border-teal-200 px-4 py-3 rounded-2xl">
+                        <span className="text-teal-600 font-black text-[10px] uppercase">📦 Handed over to Rider</span>
+                      </div>
+                    )}
+                    {o.status === 'out-for-delivery' && (
+                      <div className="flex items-center gap-3 bg-purple-50 border border-purple-200 px-4 py-3 rounded-2xl">
+                        <span className="text-purple-600 font-black text-[10px] uppercase">🚴 Out for Delivery</span>
+                      </div>
+                    )}
+                    {o.status === 'delivered' && (
+                      <div className="flex items-center gap-3 bg-green-50 border border-green-200 px-4 py-3 rounded-2xl">
+                        <span className="text-green-600 font-black text-[10px] uppercase">✅ Delivered by Rider</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
           </div>
         )}
 
         {/* MENU */}
         {activeTab === 'menu' && (
           <div className="space-y-5">
-            <div className="flex justify-end"><button onClick={() => navigate('/chef/add-dish')} className="bg-[#1A2316] text-[#FBBF24] px-8 py-4 rounded-2xl font-black uppercase text-[10px] flex items-center gap-2 hover:scale-105 transition-all"><Plus size={18}/>Add New Dish</button></div>
+            <div className="flex justify-end"><button onClick={() => navigate('/chef/add-dish')} className="bg-[#1A2316] text-[#FBBF24] px-8 py-4 rounded-2xl font-black uppercase text-[10px] flex items-center gap-2 hover:scale-105 transition-all"><Plus size={18} />Add New Dish</button></div>
             {loading ? <div className="text-center py-20 text-gray-400 font-black uppercase animate-pulse">Loading Menu...</div>
-              : menuItems.length === 0 ? <button onClick={() => navigate('/chef/add-dish')} className="w-full border-4 border-dashed border-gray-200 p-16 rounded-[40px] flex flex-col items-center text-gray-300 hover:text-[#FBBF24] hover:border-[#FBBF24] transition-all"><Plus size={40}/><span className="font-black text-[10px] mt-4 uppercase">Add Your First Dish</span></button>
-              : <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
-                {menuItems.map(d => (
-                  <div key={d._id} className={`bg-white rounded-[30px] overflow-hidden shadow-sm border-2 ${d.isAvailable ? 'border-gray-100' : 'border-red-100 opacity-70'}`}>
-                    <div className="h-44 bg-gray-100 flex items-center justify-center relative overflow-hidden">
-                      {d.img ? <img src={`${window.API_URL}${d.img}`} alt={d.name} className="w-full h-full object-cover"/> : <ChefHat size={40} className="text-gray-200"/>}
-                      <span className={`absolute top-3 right-3 px-3 py-1 rounded-full text-[9px] font-black uppercase ${d.isAvailable?'bg-green-100 text-green-700':'bg-red-100 text-red-600'}`}>{d.isAvailable?'Live':'Hidden'}</span>
-                    </div>
-                    <div className="p-5">
-                      <div className="flex justify-between items-start mb-1"><div><h4 className="font-black">{d.name}</h4><p className="text-[10px] text-gray-400 uppercase">{d.category}</p></div><p className="font-black text-lg">PKR {d.price}</p></div>
-                      {d.description && <p className="text-xs text-gray-500 mt-2 mb-3 line-clamp-2">{d.description}</p>}
-                      <div className="flex gap-2 mt-3">
-                        <button onClick={() => toggleDish(d._id,d.isAvailable)} className="flex-1 flex items-center justify-center gap-1 py-2 bg-gray-50 rounded-xl text-[9px] font-black uppercase hover:bg-gray-100 transition-all">
-                          {d.isAvailable?<ToggleRight size={12} className="text-green-500"/>:<ToggleLeft size={12} className="text-red-500"/>}{d.isAvailable?'Hide':'Show'}
-                        </button>
-                        <button onClick={() => navigate(`/chef/edit-dish/${d._id}`)} className="flex-1 flex items-center justify-center gap-1 py-2 bg-[#1A2316] text-[#FBBF24] rounded-xl text-[9px] font-black uppercase"><Edit3 size={12}/>Edit</button>
-                        <button onClick={() => setDeleteDishModal({ id: d._id, name: d.name })} className="py-2 px-3 bg-red-50 text-red-500 rounded-xl text-[9px] font-black uppercase hover:bg-red-100 transition-all"><Trash2 size={12}/></button>
+              : menuItems.length === 0 ? <button onClick={() => navigate('/chef/add-dish')} className="w-full border-4 border-dashed border-gray-200 p-16 rounded-[40px] flex flex-col items-center text-gray-300 hover:text-[#FBBF24] hover:border-[#FBBF24] transition-all"><Plus size={40} /><span className="font-black text-[10px] mt-4 uppercase">Add Your First Dish</span></button>
+                : <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {menuItems.map(d => (
+                    <div key={d._id} className={`bg-white rounded-[30px] overflow-hidden shadow-sm border-2 ${d.isAvailable ? 'border-gray-100' : 'border-red-100 opacity-70'}`}>
+                      <div className="h-44 bg-gray-100 flex items-center justify-center relative overflow-hidden">
+                        {d.img ? <img src={`${window.API_URL}${d.img}`} alt={d.name} className="w-full h-full object-cover" /> : <ChefHat size={40} className="text-gray-200" />}
+                        <span className={`absolute top-3 right-3 px-3 py-1 rounded-full text-[9px] font-black uppercase ${d.isAvailable ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>{d.isAvailable ? 'Live' : 'Hidden'}</span>
+                      </div>
+                      <div className="p-5">
+                        <div className="flex justify-between items-start mb-1"><div><h4 className="font-black">{d.name}</h4><p className="text-[10px] text-gray-400 uppercase">{d.category}</p></div><p className="font-black text-lg">PKR {d.price}</p></div>
+                        {d.description && <p className="text-xs text-gray-500 mt-2 mb-3 line-clamp-2">{d.description}</p>}
+                        <div className="flex gap-2 mt-3">
+                          <button onClick={() => toggleDish(d._id, d.isAvailable)} className="flex-1 flex items-center justify-center gap-1 py-2 bg-gray-50 rounded-xl text-[9px] font-black uppercase hover:bg-gray-100 transition-all">
+                            {d.isAvailable ? <ToggleRight size={12} className="text-green-500" /> : <ToggleLeft size={12} className="text-red-500" />}{d.isAvailable ? 'Hide' : 'Show'}
+                          </button>
+                          <button onClick={() => navigate(`/chef/edit-dish/${d._id}`)} className="flex-1 flex items-center justify-center gap-1 py-2 bg-[#1A2316] text-[#FBBF24] rounded-xl text-[9px] font-black uppercase"><Edit3 size={12} />Edit</button>
+                          <button onClick={() => setDeleteDishModal({ id: d._id, name: d.name })} className="py-2 px-3 bg-red-50 text-red-500 rounded-xl text-[9px] font-black uppercase hover:bg-red-100 transition-all"><Trash2 size={12} /></button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>}
+                  ))}
+                </div>}
           </div>
         )}
 
@@ -987,14 +987,14 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
           <div className="space-y-6">
             {/* Nested tabs */}
             <div className="flex gap-4 border-b border-gray-100 pb-3 mb-6">
-              <button 
-                onClick={() => setSubTab('subscribers')} 
+              <button
+                onClick={() => setSubTab('subscribers')}
                 className={`pb-2 font-black uppercase text-[10px] tracking-wider transition-all relative ${subTab === 'subscribers' ? 'text-[#1A2316] border-b-2 border-[#FBBF24]' : 'text-gray-400 hover:text-gray-600'}`}
               >
                 Active Subscribers ({subscriptions.length})
               </button>
-              <button 
-                onClick={() => setSubTab('plans')} 
+              <button
+                onClick={() => setSubTab('plans')}
                 className={`pb-2 font-black uppercase text-[10px] tracking-wider transition-all relative ${subTab === 'plans' ? 'text-[#1A2316] border-b-2 border-[#FBBF24]' : 'text-gray-400 hover:text-gray-600'}`}
               >
                 Manage Meal Plans ({subscriptionPlans.length})
@@ -1021,8 +1021,8 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
                 </div>
 
                 {loading ? <div className="text-center py-20 text-gray-400 font-black animate-pulse">Loading...</div>
-                  : filteredSubscribers().length === 0 ? <div className="bg-white p-16 rounded-[40px] flex flex-col items-center text-gray-300"><Package size={40} className="mb-4 opacity-20"/><p className="font-black text-[10px] uppercase">No Subscriptions Found</p></div>
-                  : <div className="grid md:grid-cols-2 gap-5">
+                  : filteredSubscribers().length === 0 ? <div className="bg-white p-16 rounded-[40px] flex flex-col items-center text-gray-300"><Package size={40} className="mb-4 opacity-20" /><p className="font-black text-[10px] uppercase">No Subscriptions Found</p></div>
+                    : <div className="grid md:grid-cols-2 gap-5">
                       {filteredSubscribers().map(s => (
                         <div key={s._id} className="bg-white p-7 rounded-[30px] shadow-sm border border-gray-100">
                           <div className="flex justify-between items-start mb-4">
@@ -1033,12 +1033,11 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
                             </div>
                             <div className="flex flex-col items-end gap-1">
                               <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase bg-green-100 text-green-700">{s.planType}</span>
-                              <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${
-                                s.status === 'active' ? 'bg-green-100 text-green-700' :
-                                s.status === 'paused' ? 'bg-yellow-100 text-yellow-700' :
-                                s.status === 'pending' ? 'bg-orange-100 text-orange-700' :
-                                'bg-red-100 text-red-600'
-                              }`}>{s.status}</span>
+                              <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${s.status === 'active' ? 'bg-green-100 text-green-700' :
+                                  s.status === 'paused' ? 'bg-yellow-100 text-yellow-700' :
+                                    s.status === 'pending' ? 'bg-orange-100 text-orange-700' :
+                                      'bg-red-100 text-red-600'
+                                }`}>{s.status}</span>
                             </div>
                           </div>
                           <div className="space-y-2 text-sm border-t border-gray-50 pt-4">
@@ -1054,7 +1053,7 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
                               <div key={l} className="flex justify-between"><span className="text-gray-400 font-bold">{l}:</span><span className="font-black text-right">{v}</span></div>
                             ))}
                           </div>
-                          
+
                           <div className="mt-4 border-t border-gray-50 pt-3">
                             <p className="text-[9px] font-black uppercase text-gray-400 mb-2">Delivery Schedule</p>
                             <div className="flex flex-wrap gap-1.5">
@@ -1063,11 +1062,10 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
                                 return (
                                   <span
                                     key={day}
-                                    className={`px-2.5 py-1 rounded-xl text-[9px] font-black uppercase flex items-center gap-1 transition-all ${
-                                      isPaused
+                                    className={`px-2.5 py-1 rounded-xl text-[9px] font-black uppercase flex items-center gap-1 transition-all ${isPaused
                                         ? 'bg-red-50 text-red-600 border border-red-100 line-through'
                                         : 'bg-green-50 text-green-700 border border-green-200'
-                                    }`}
+                                      }`}
                                   >
                                     <span className={`w-1 h-1 rounded-full ${isPaused ? 'bg-red-500' : 'bg-green-500'}`} />
                                     {day} {isPaused ? '(Paused)' : ''}
@@ -1102,7 +1100,7 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
             ) : (
               <div className="space-y-6">
                 <div className="flex justify-end">
-                  <button 
+                  <button
                     onClick={() => {
                       setEditingPlan(null);
                       setPlanForm({
@@ -1122,17 +1120,17 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
                         ]
                       });
                       setShowPlanModal(true);
-                    }} 
+                    }}
                     className="bg-[#1A2316] text-[#FBBF24] px-6 py-3 rounded-xl font-black uppercase text-[10px] flex items-center gap-2 hover:scale-105 transition-all"
                   >
-                    <Plus size={16}/> Create Plan Package
+                    <Plus size={16} /> Create Plan Package
                   </button>
                 </div>
 
                 {loading ? <div className="text-center py-20 text-gray-400 font-black animate-pulse">Loading plans...</div>
                   : subscriptionPlans.length === 0 ? (
                     <div className="bg-white p-16 rounded-[40px] flex flex-col items-center text-gray-300">
-                      <Package size={40} className="mb-4 opacity-20"/>
+                      <Package size={40} className="mb-4 opacity-20" />
                       <p className="font-black text-[10px] uppercase">No Plans Uploaded Yet</p>
                       <p className="text-xs text-gray-400 mt-2 font-bold">Create breakfast, lunch, or dinner packages for users to subscribe.</p>
                     </div>
@@ -1147,7 +1145,7 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
                             </div>
                             <h4 className="font-black text-lg text-[#1A2316] mb-1">{plan.title}</h4>
                             <p className="text-xs text-gray-400 font-semibold mb-3">{plan.description}</p>
-                            
+
                             <div className="border-t border-gray-50 pt-3 mb-4 space-y-1">
                               <p className="text-[10px] font-black text-gray-400 uppercase mb-2">Weekly Menu Details</p>
                               {plan.menu?.map(m => (
@@ -1162,8 +1160,8 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
                           <div className="border-t border-gray-50 pt-4 flex justify-between items-center mt-4">
                             <span className="text-xl font-black text-[#1A2316]">PKR {plan.price}</span>
                             <div className="flex gap-2">
-                              <button onClick={() => openEditPlan(plan)} className="p-2 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100"><Edit3 size={14}/></button>
-                              <button onClick={() => setDeletePlanModal({ id: plan._id, title: plan.title })} className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-100"><Trash2 size={14}/></button>
+                              <button onClick={() => openEditPlan(plan)} className="p-2 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100"><Edit3 size={14} /></button>
+                              <button onClick={() => setDeletePlanModal({ id: plan._id, title: plan.title })} className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-100"><Trash2 size={14} /></button>
                             </div>
                           </div>
                         </div>
@@ -1182,27 +1180,27 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
                   <h3 className="text-2xl font-black italic uppercase text-[#1A2316] mb-6">
                     {editingPlan ? 'Edit Subscription Plan' : 'Create Subscription Plan'}
                   </h3>
-                  
+
                   <form onSubmit={handleSavePlan} className="space-y-5">
                     <div className="grid md:grid-cols-2 gap-5">
                       <div>
                         <label className="text-[9px] font-black uppercase text-gray-400 ml-2 block mb-1">Plan Title *</label>
-                        <input 
-                          type="text" 
+                        <input
+                          type="text"
                           required
-                          value={planForm.title} 
-                          onChange={e => setPlanForm({...planForm, title: e.target.value})} 
+                          value={planForm.title}
+                          onChange={e => setPlanForm({ ...planForm, title: e.target.value })}
                           placeholder="e.g. Premium Breakfast Package"
                           className="w-full bg-gray-50 p-4 rounded-xl outline-none font-bold text-sm border border-transparent focus:border-[#FBBF24] transition-all"
                         />
                       </div>
                       <div>
                         <label className="text-[9px] font-black uppercase text-gray-400 ml-2 block mb-1">Package Price (PKR) *</label>
-                        <input 
-                          type="number" 
+                        <input
+                          type="number"
                           required
-                          value={planForm.price} 
-                          onChange={e => setPlanForm({...planForm, price: e.target.value})} 
+                          value={planForm.price}
+                          onChange={e => setPlanForm({ ...planForm, price: e.target.value })}
                           placeholder="e.g. 4500"
                           className="w-full bg-gray-50 p-4 rounded-xl outline-none font-bold text-sm border border-transparent focus:border-[#FBBF24] transition-all"
                         />
@@ -1211,10 +1209,10 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
 
                     <div>
                       <label className="text-[9px] font-black uppercase text-gray-400 ml-2 block mb-1">Package Description *</label>
-                      <textarea 
+                      <textarea
                         required
-                        value={planForm.description} 
-                        onChange={e => setPlanForm({...planForm, description: e.target.value})} 
+                        value={planForm.description}
+                        onChange={e => setPlanForm({ ...planForm, description: e.target.value })}
                         placeholder="Detail what is included in this package and delivery details..."
                         className="w-full bg-gray-50 p-4 rounded-xl outline-none font-bold text-sm h-20 resize-none border border-transparent focus:border-[#FBBF24] transition-all"
                       />
@@ -1223,9 +1221,9 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
                     <div className="grid md:grid-cols-2 gap-5">
                       <div>
                         <label className="text-[9px] font-black uppercase text-gray-400 ml-2 block mb-1">Plan Duration *</label>
-                        <select 
-                          value={planForm.duration} 
-                          onChange={e => setPlanForm({...planForm, duration: e.target.value})}
+                        <select
+                          value={planForm.duration}
+                          onChange={e => setPlanForm({ ...planForm, duration: e.target.value })}
                           className="w-full bg-gray-50 p-4 rounded-xl outline-none font-bold text-sm border border-transparent focus:border-[#FBBF24] transition-all"
                         >
                           <option value="weekly">Weekly (7 Days)</option>
@@ -1235,9 +1233,9 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
                       </div>
                       <div>
                         <label className="text-[9px] font-black uppercase text-gray-400 ml-2 block mb-1">Meal Type *</label>
-                        <select 
-                          value={planForm.mealType} 
-                          onChange={e => setPlanForm({...planForm, mealType: e.target.value})}
+                        <select
+                          value={planForm.mealType}
+                          onChange={e => setPlanForm({ ...planForm, mealType: e.target.value })}
                           className="w-full bg-gray-50 p-4 rounded-xl outline-none font-bold text-sm border border-transparent focus:border-[#FBBF24] transition-all"
                         >
                           <option value="Breakfast">Breakfast</option>
@@ -1254,13 +1252,13 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
                         {planForm.menu.map((menuItem, idx) => (
                           <div key={menuItem.day} className="flex flex-col">
                             <label className="text-[9px] font-black text-gray-500 mb-1 ml-1">{menuItem.day}</label>
-                            <input 
-                              type="text" 
-                              value={menuItem.items} 
+                            <input
+                              type="text"
+                              value={menuItem.items}
                               onChange={e => {
                                 const newMenu = [...planForm.menu];
                                 newMenu[idx].items = e.target.value;
-                                setPlanForm({...planForm, menu: newMenu});
+                                setPlanForm({ ...planForm, menu: newMenu });
                               }}
                               placeholder="e.g. Omelette + Paratha + Chai"
                               className="w-full bg-gray-50 p-3 rounded-lg outline-none font-semibold text-xs border border-transparent focus:border-[#FBBF24] transition-all"
@@ -1270,8 +1268,8 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
                       </div>
                     </div>
 
-                    <button 
-                      type="submit" 
+                    <button
+                      type="submit"
                       className="w-full bg-[#1A2316] text-[#FBBF24] py-4 rounded-xl font-black uppercase tracking-widest text-xs hover:opacity-90 active:scale-95 transition-all mt-4"
                     >
                       {editingPlan ? 'Update Package' : 'Publish Package'}
@@ -1288,7 +1286,7 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
           <div className="space-y-5">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-black uppercase italic">Wallet Console</h3>
-              <button 
+              <button
                 onClick={() => { setShowWithdrawModal(true); setWithdrawError(''); setWithdrawSuccess(''); }}
                 className="bg-[#1A2316] text-[#FBBF24] px-6 py-3 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:scale-105 transition-all shadow-md"
               >
@@ -1301,10 +1299,10 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
                 ['Locked Sub Earnings', lockedEarnings, 'text-purple-400'],
                 ['Processing Payouts', walletData.pendingBalance, 'text-yellow-400'],
                 ['Withdrawn Total', walletData.withdrawnTotal, 'text-gray-400']
-              ].map(([l,v,c]) => (
+              ].map(([l, v, c]) => (
                 <div key={l} className="bg-[#1A2316] p-7 rounded-[30px] text-white">
                   <p className="text-[10px] font-black uppercase text-gray-400 mb-2">{l}</p>
-                  <h3 className={`text-2xl font-black ${c}`}>PKR {(v||0).toLocaleString()}</h3>
+                  <h3 className={`text-2xl font-black ${c}`}>PKR {(v || 0).toLocaleString()}</h3>
                 </div>
               ))}
             </div>
@@ -1313,8 +1311,8 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
               {!walletData.transactions?.length ? <p className="text-gray-300 text-center py-8 font-black text-[10px] uppercase">No transactions yet</p>
                 : walletData.transactions.map(tx => (
                   <div key={tx._id} className="flex justify-between items-center py-3 border-b border-gray-50 last:border-0">
-                    <div><p className="font-black">{tx.type==='credit'?'✅ Earning':'💸 Withdrawal'}</p><p className="text-xs text-gray-400">{new Date(tx.createdAt).toLocaleDateString()}</p></div>
-                    <div className="text-right"><p className={`font-black text-lg ${tx.type==='credit'?'text-green-600':'text-red-500'}`}>{tx.type==='credit'?'+':'-'}PKR {tx.amount}</p><span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${tx.status==='approved'?'bg-green-100 text-green-700':tx.status==='pending'?'bg-yellow-100 text-yellow-700':'bg-red-100 text-red-600'}`}>{tx.status}</span></div>
+                    <div><p className="font-black">{tx.type === 'credit' ? '✅ Earning' : '💸 Withdrawal'}</p><p className="text-xs text-gray-400">{new Date(tx.createdAt).toLocaleDateString()}</p></div>
+                    <div className="text-right"><p className={`font-black text-lg ${tx.type === 'credit' ? 'text-green-600' : 'text-red-500'}`}>{tx.type === 'credit' ? '+' : '-'}PKR {tx.amount}</p><span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${tx.status === 'approved' ? 'bg-green-100 text-green-700' : tx.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-600'}`}>{tx.status}</span></div>
                   </div>
                 ))}
             </div>
@@ -1326,18 +1324,18 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
           <div className="grid lg:grid-cols-2 gap-8">
             <div className="bg-white p-10 rounded-[50px] shadow-sm border border-gray-100 space-y-5">
               <h3 className="text-xl font-black italic uppercase">Profit Engine</h3>
-              {[['ingredients','Ingredients Cost (PKR)'],['utilities','Utilities (Gas/Electric)'],['packaging','Packaging Cost']].map(([k,l]) => (
-                <div key={k} className="bg-gray-50 p-5 rounded-[20px]"><label className="text-[9px] font-black uppercase text-gray-400 block mb-1">{l}</label><input type="number" value={calc[k]} onChange={e => setCalc({...calc,[k]:e.target.value})} className="w-full bg-transparent font-black text-2xl outline-none"/></div>
+              {[['ingredients', 'Ingredients Cost (PKR)'], ['utilities', 'Utilities (Gas/Electric)'], ['packaging', 'Packaging Cost']].map(([k, l]) => (
+                <div key={k} className="bg-gray-50 p-5 rounded-[20px]"><label className="text-[9px] font-black uppercase text-gray-400 block mb-1">{l}</label><input type="number" value={calc[k]} onChange={e => setCalc({ ...calc, [k]: e.target.value })} className="w-full bg-transparent font-black text-2xl outline-none" /></div>
               ))}
               <div className="bg-[#1A2316] p-5 rounded-[20px] text-white">
                 <div className="flex justify-between text-[9px] font-black uppercase text-[#FBBF24] mb-3"><span>Manual Adjustment</span><span>PKR {calc.manualAdjustment}</span></div>
-                <div className="flex items-center gap-4"><button onClick={() => setCalc({...calc,manualAdjustment:Number(calc.manualAdjustment)-20})} className="p-3 bg-white/10 rounded-xl"><Minus size={14}/></button><div className="flex-1 h-1 bg-white/10 rounded-full"/><button onClick={() => setCalc({...calc,manualAdjustment:Number(calc.manualAdjustment)+20})} className="p-3 bg-white/10 rounded-xl"><Plus size={14}/></button></div>
+                <div className="flex items-center gap-4"><button onClick={() => setCalc({ ...calc, manualAdjustment: Number(calc.manualAdjustment) - 20 })} className="p-3 bg-white/10 rounded-xl"><Minus size={14} /></button><div className="flex-1 h-1 bg-white/10 rounded-full" /><button onClick={() => setCalc({ ...calc, manualAdjustment: Number(calc.manualAdjustment) + 20 })} className="p-3 bg-white/10 rounded-xl"><Plus size={14} /></button></div>
               </div>
             </div>
             <div className="bg-[#1A2316] p-12 rounded-[50px] text-white flex flex-col justify-between border-b-[16px] border-[#FBBF24] shadow-2xl">
               <div><p className="text-[#FBBF24] font-black uppercase text-[10px] tracking-widest mb-8 italic underline">Financial Summary</p>
                 <div className="space-y-3 opacity-70">
-                  {[['Total Cost',`PKR ${baseCost}`],['Profit (40%)',`PKR ${(baseCost*0.4).toFixed(0)}`],['Platform Fee (10%)',`PKR ${(finalPrice*0.1).toFixed(0)}`]].map(([l,v]) => <div key={l} className="flex justify-between text-[10px] font-black uppercase"><span>{l}</span><span>{v}</span></div>)}
+                  {[['Total Cost', `PKR ${baseCost}`], ['Profit (40%)', `PKR ${(baseCost * 0.4).toFixed(0)}`], ['Platform Fee (10%)', `PKR ${(finalPrice * 0.1).toFixed(0)}`]].map(([l, v]) => <div key={l} className="flex justify-between text-[10px] font-black uppercase"><span>{l}</span><span>{v}</span></div>)}
                 </div>
               </div>
               <div className="mt-10"><p className="text-[11px] font-black uppercase text-gray-500 tracking-[0.4em] mb-2 italic">Suggested Price</p><h4 className="text-7xl font-black italic text-[#FBBF24] tracking-tighter">PKR {finalPrice.toFixed(0)}</h4></div>
@@ -1352,14 +1350,14 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
 
         {/* PROFILE */}
         {activeTab === 'profile' && (
-          <ProfileTab 
-            user={currentUser} 
-            chefId={chefId} 
-            token={token} 
+          <ProfileTab
+            user={currentUser}
+            chefId={chefId}
+            token={token}
             onUpdateUser={(updated) => {
               setCurrentUser(updated);
               if (onUserUpdate) onUserUpdate(updated);
-            }} 
+            }}
           />
         )}
         {/* WITHDRAW MODAL */}
@@ -1367,20 +1365,20 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
           <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-black/45 backdrop-blur-sm" onClick={() => setShowWithdrawModal(false)}></div>
             <div className="relative w-full max-w-lg bg-white rounded-[40px] shadow-2xl p-10 z-[1001] animate-in zoom-in duration-300 text-left">
-              <button 
-                onClick={() => setShowWithdrawModal(false)} 
+              <button
+                onClick={() => setShowWithdrawModal(false)}
                 className="absolute top-6 right-6 p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"
               >
                 ✕
               </button>
-              
+
               <h3 className="text-2xl font-black text-[#1A2316] uppercase italic mb-2">Request Withdrawal<span className="text-[#FBBF24]">.</span></h3>
               <p className="text-[10px] text-gray-400 font-black uppercase tracking-[2px] mb-6">Minimum Rs. 1000 withdrawal</p>
 
               <form onSubmit={handleWithdrawSubmit} className="space-y-6">
                 <div className="space-y-2">
                   <label className="text-[9px] font-black uppercase text-gray-400 ml-4">Withdrawal Amount (PKR)</label>
-                  <input 
+                  <input
                     type="number"
                     placeholder="e.g. 5000"
                     value={withdrawAmount}
@@ -1392,7 +1390,7 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
 
                 <div className="space-y-2">
                   <label className="text-[9px] font-black uppercase text-gray-400 ml-4">Payment Method</label>
-                  <select 
+                  <select
                     value={withdrawMethod}
                     onChange={(e) => setWithdrawMethod(e.target.value)}
                     className="w-full bg-gray-50 p-5 rounded-3xl outline-none font-bold text-sm border border-transparent focus:border-[#FBBF24] transition-all"
@@ -1405,7 +1403,7 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
 
                 <div className="space-y-2">
                   <label className="text-[9px] font-black uppercase text-gray-400 ml-4">Account Number / IBAN Details</label>
-                  <input 
+                  <input
                     type="text"
                     placeholder="e.g. 03XXXXXXXXX or PKXX..."
                     value={withdrawAccount}
@@ -1426,7 +1424,7 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
                   </div>
                 )}
 
-                <button 
+                <button
                   type="submit"
                   disabled={withdrawing}
                   className="w-full py-5 bg-[#1A2316] text-[#FBBF24] rounded-3xl font-black uppercase text-xs tracking-widest hover:bg-[#FBBF24] hover:text-[#1A2316] transition-all disabled:opacity-60 flex items-center justify-center gap-2"
@@ -1498,7 +1496,7 @@ const RecipesTab = ({ chefId, token }) => {
       formData.append('name', recipeForm.name);
       formData.append('time', recipeForm.time || '30 mins');
       formData.append('difficulty', recipeForm.difficulty);
-      
+
       // Parse ingredients and steps into JSON arrays
       const ingredientsArray = recipeForm.ingredients
         .split('\n')
@@ -1511,7 +1509,7 @@ const RecipesTab = ({ chefId, token }) => {
 
       formData.append('ingredients', JSON.stringify(ingredientsArray));
       formData.append('steps', JSON.stringify(stepsArray));
-      
+
       if (recipeForm.image) {
         formData.append('image', recipeForm.image);
       }
@@ -1586,7 +1584,7 @@ const RecipesTab = ({ chefId, token }) => {
           <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Share tips and ingredients of your famous dishes</p>
         </div>
         <button onClick={() => setShowModal(true)} className="bg-[#1A2316] text-[#FBBF24] px-8 py-4 rounded-2xl font-black uppercase text-[10px] flex items-center gap-2 hover:scale-105 transition-all">
-          <Plus size={18}/>Add New Recipe
+          <Plus size={18} />Add New Recipe
         </button>
       </div>
 
@@ -1594,7 +1592,7 @@ const RecipesTab = ({ chefId, token }) => {
         <div className="text-center py-20 text-gray-400 font-black uppercase animate-pulse">Loading Recipes...</div>
       ) : recipes.length === 0 ? (
         <button onClick={() => setShowModal(true)} className="w-full border-4 border-dashed border-gray-200 p-16 rounded-[40px] flex flex-col items-center text-gray-300 hover:text-[#FBBF24] hover:border-[#FBBF24] transition-all">
-          <Plus size={40}/>
+          <Plus size={40} />
           <span className="font-black text-[10px] mt-4 uppercase">Publish Your First Recipe</span>
         </button>
       ) : (
@@ -1604,9 +1602,9 @@ const RecipesTab = ({ chefId, token }) => {
               <div>
                 <div className="h-44 bg-gray-100 flex items-center justify-center relative overflow-hidden">
                   {recipe.img ? (
-                    <img src={`${window.API_URL}${recipe.img}`} alt={recipe.name} className="w-full h-full object-cover"/>
+                    <img src={`${window.API_URL}${recipe.img}`} alt={recipe.name} className="w-full h-full object-cover" />
                   ) : (
-                    <BookOpen size={40} className="text-gray-200"/>
+                    <BookOpen size={40} className="text-gray-200" />
                   )}
                   <span className="absolute top-3 right-3 px-3 py-1 rounded-full text-[9px] font-black uppercase bg-[#1A2316] text-[#FBBF24]">
                     {recipe.difficulty}
@@ -1617,7 +1615,7 @@ const RecipesTab = ({ chefId, token }) => {
                     <h4 className="font-black text-[#1A2316] uppercase italic">{recipe.name}</h4>
                     <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider mt-1">Prep: {recipe.time}</p>
                   </div>
-                  
+
                   {recipe.ingredients?.length > 0 && (
                     <div>
                       <p className="text-[9px] font-black uppercase text-gray-400 mb-1">Ingredients</p>
@@ -1637,7 +1635,7 @@ const RecipesTab = ({ chefId, token }) => {
               </div>
               <div className="p-5 border-t border-gray-50 flex justify-end">
                 <button onClick={() => setDeleteRecipeModal({ id: recipe._id, name: recipe.name })} className="py-2.5 px-4 bg-red-50 text-red-500 rounded-xl text-[9px] font-black uppercase hover:bg-red-100 transition-all flex items-center gap-1">
-                  <Trash2 size={12}/> Delete
+                  <Trash2 size={12} /> Delete
                 </button>
               </div>
             </div>
@@ -1655,22 +1653,22 @@ const RecipesTab = ({ chefId, token }) => {
             </button>
             <form onSubmit={handleAddRecipe} className="p-10 max-h-[85vh] overflow-y-auto custom-scrollbar space-y-6">
               <h3 className="text-2xl font-black uppercase italic text-[#1A2316] mb-8">Publish Recipe</h3>
-              
+
               <div className="grid md:grid-cols-2 gap-5">
                 <div>
                   <label className="text-[9px] font-black uppercase text-gray-400 ml-2 block mb-1">Recipe Name *</label>
-                  <input type="text" placeholder="e.g. Secret Garam Masala" value={recipeForm.name} onChange={e => setRecipeForm({...recipeForm, name: e.target.value})} className="w-full bg-gray-50 p-4 rounded-xl outline-none font-bold text-sm border border-transparent focus:border-[#FBBF24] transition-all" required/>
+                  <input type="text" placeholder="e.g. Secret Garam Masala" value={recipeForm.name} onChange={e => setRecipeForm({ ...recipeForm, name: e.target.value })} className="w-full bg-gray-50 p-4 rounded-xl outline-none font-bold text-sm border border-transparent focus:border-[#FBBF24] transition-all" required />
                 </div>
                 <div>
                   <label className="text-[9px] font-black uppercase text-gray-400 ml-2 block mb-1">Prep Time</label>
-                  <input type="text" placeholder="e.g. 15 mins" value={recipeForm.time} onChange={e => setRecipeForm({...recipeForm, time: e.target.value})} className="w-full bg-gray-50 p-4 rounded-xl outline-none font-bold text-sm border border-transparent focus:border-[#FBBF24] transition-all"/>
+                  <input type="text" placeholder="e.g. 15 mins" value={recipeForm.time} onChange={e => setRecipeForm({ ...recipeForm, time: e.target.value })} className="w-full bg-gray-50 p-4 rounded-xl outline-none font-bold text-sm border border-transparent focus:border-[#FBBF24] transition-all" />
                 </div>
               </div>
 
               <div className="grid md:grid-cols-2 gap-5">
                 <div>
                   <label className="text-[9px] font-black uppercase text-gray-400 ml-2 block mb-1">Difficulty</label>
-                  <select value={recipeForm.difficulty} onChange={e => setRecipeForm({...recipeForm, difficulty: e.target.value})} className="w-full bg-gray-50 p-4 rounded-xl outline-none font-bold text-sm border border-transparent focus:border-[#FBBF24] transition-all">
+                  <select value={recipeForm.difficulty} onChange={e => setRecipeForm({ ...recipeForm, difficulty: e.target.value })} className="w-full bg-gray-50 p-4 rounded-xl outline-none font-bold text-sm border border-transparent focus:border-[#FBBF24] transition-all">
                     <option>Easy</option>
                     <option>Medium</option>
                     <option>Hard</option>
@@ -1678,24 +1676,24 @@ const RecipesTab = ({ chefId, token }) => {
                 </div>
                 <div>
                   <label className="text-[9px] font-black uppercase text-gray-400 ml-2 block mb-1">Recipe Image</label>
-                  <input type="file" accept="image/*" onChange={handleImageChange} className="w-full bg-gray-50 p-3 rounded-xl outline-none font-bold text-xs border border-transparent focus:border-[#FBBF24] transition-all"/>
+                  <input type="file" accept="image/*" onChange={handleImageChange} className="w-full bg-gray-50 p-3 rounded-xl outline-none font-bold text-xs border border-transparent focus:border-[#FBBF24] transition-all" />
                 </div>
               </div>
 
               {imagePreview && (
                 <div className="h-32 w-full rounded-2xl overflow-hidden border border-gray-100">
-                  <img src={imagePreview} className="w-full h-full object-cover" alt="Preview"/>
+                  <img src={imagePreview} className="w-full h-full object-cover" alt="Preview" />
                 </div>
               )}
 
               <div className="grid md:grid-cols-2 gap-5">
                 <div>
                   <label className="text-[9px] font-black uppercase text-gray-400 ml-2 block mb-1">Ingredients (One per line)</label>
-                  <textarea rows="5" placeholder="Basmati Rice&#10;Mint Leaves&#10;Yogurt" value={recipeForm.ingredients} onChange={e => setRecipeForm({...recipeForm, ingredients: e.target.value})} className="w-full bg-gray-50 p-4 rounded-xl outline-none font-bold text-sm border border-transparent focus:border-[#FBBF24] transition-all resize-none"/>
+                  <textarea rows="5" placeholder="Basmati Rice&#10;Mint Leaves&#10;Yogurt" value={recipeForm.ingredients} onChange={e => setRecipeForm({ ...recipeForm, ingredients: e.target.value })} className="w-full bg-gray-50 p-4 rounded-xl outline-none font-bold text-sm border border-transparent focus:border-[#FBBF24] transition-all resize-none" />
                 </div>
                 <div>
                   <label className="text-[9px] font-black uppercase text-gray-400 ml-2 block mb-1">Method / Steps (One per line)</label>
-                  <textarea rows="5" placeholder="Boil rice up to 80%&#10;Layer meat and rice&#10;Dum for 15 mins" value={recipeForm.steps} onChange={e => setRecipeForm({...recipeForm, steps: e.target.value})} className="w-full bg-gray-50 p-4 rounded-xl outline-none font-bold text-sm border border-transparent focus:border-[#FBBF24] transition-all resize-none"/>
+                  <textarea rows="5" placeholder="Boil rice up to 80%&#10;Layer meat and rice&#10;Dum for 15 mins" value={recipeForm.steps} onChange={e => setRecipeForm({ ...recipeForm, steps: e.target.value })} className="w-full bg-gray-50 p-4 rounded-xl outline-none font-bold text-sm border border-transparent focus:border-[#FBBF24] transition-all resize-none" />
                 </div>
               </div>
 
@@ -1713,14 +1711,14 @@ const RecipesTab = ({ chefId, token }) => {
 const ProfileTab = ({ user, chefId, token, onUpdateUser }) => {
   // authH not needed here — save() uses token prop directly
   const [form, setForm] = useState({
-    name: user.name||'',
-    kitchenName: user.kitchenName||'',
-    about: user.about||'',
-    phone: user.phone||'',
-    cnic: user.cnic||'',
-    address: user.address||'',
-    specialty: user.specialty||'',
-    experience: user.experience||'',
+    name: user.name || '',
+    kitchenName: user.kitchenName || '',
+    about: user.about || '',
+    phone: user.phone || '',
+    cnic: user.cnic || '',
+    address: user.address || '',
+    specialty: user.specialty || '',
+    experience: user.experience || '',
     weeklyBreakfastPrice: user.weeklyBreakfastPrice || '',
     weeklyLunchPrice: user.weeklyLunchPrice || '',
     weeklyDinnerPrice: user.weeklyDinnerPrice || '',
@@ -1802,8 +1800,8 @@ const ProfileTab = ({ user, chefId, token, onUpdateUser }) => {
       localStorage.setItem('user', JSON.stringify(updatedUser));
       if (onUpdateUser) onUpdateUser(updatedUser);
       toast.success('Profile updated successfully!');
-    } catch (e) { 
-      toast.error('Error: ' + (e.response?.data?.message || e.message)); 
+    } catch (e) {
+      toast.error('Error: ' + (e.response?.data?.message || e.message));
     }
   };
 
@@ -1816,7 +1814,7 @@ const ProfileTab = ({ user, chefId, token, onUpdateUser }) => {
             {imagePreview ? (
               <img src={imagePreview.startsWith('blob:') ? imagePreview : `${window.API_URL}${imagePreview}`} className="w-full h-full object-cover" alt="Profile" />
             ) : (
-              <span className="text-5xl font-black text-[#FBBF24]">{(user.name||'C').charAt(0)}</span>
+              <span className="text-5xl font-black text-[#FBBF24]">{(user.name || 'C').charAt(0)}</span>
             )}
             <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all">
               <Camera size={20} className="text-white" />
@@ -1831,21 +1829,21 @@ const ProfileTab = ({ user, chefId, token, onUpdateUser }) => {
       </div>
       <div className="grid md:grid-cols-2 gap-6">
         {[
-          ['name','Full Name','text'],
-          ['kitchenName','Kitchen Name','text'],
-          ['phone','Phone','text'],
-          ['cnic','CNIC / License','text'],
-          ['specialty','Specialty (e.g. Desi, BBQ)','text'],
-          ['experience','Experience (e.g. 5 Years)','text'],
-          ['about','About Kitchen','textarea'],
-          ['address','Kitchen Address','text']
-        ].map(([k,l,t]) => (
-          <div key={k} className={k==='address' || k==='about' ?'md:col-span-2':''}>
+          ['name', 'Full Name', 'text'],
+          ['kitchenName', 'Kitchen Name', 'text'],
+          ['phone', 'Phone', 'text'],
+          ['cnic', 'CNIC / License', 'text'],
+          ['specialty', 'Specialty (e.g. Desi, BBQ)', 'text'],
+          ['experience', 'Experience (e.g. 5 Years)', 'text'],
+          ['about', 'About Kitchen', 'textarea'],
+          ['address', 'Kitchen Address', 'text']
+        ].map(([k, l, t]) => (
+          <div key={k} className={k === 'address' || k === 'about' ? 'md:col-span-2' : ''}>
             <label className="text-[9px] font-black uppercase text-gray-400 ml-2 block mb-1">{l}</label>
             {t === 'textarea' ? (
-              <textarea rows="3" value={form[k]} onChange={e => setForm({...form,[k]:e.target.value})} className="w-full bg-gray-50 p-5 rounded-2xl outline-none font-bold text-sm border border-transparent focus:border-[#FBBF24] transition-all resize-none"/>
+              <textarea rows="3" value={form[k]} onChange={e => setForm({ ...form, [k]: e.target.value })} className="w-full bg-gray-50 p-5 rounded-2xl outline-none font-bold text-sm border border-transparent focus:border-[#FBBF24] transition-all resize-none" />
             ) : (
-              <input type={t} value={form[k]} onChange={e => setForm({...form,[k]:e.target.value})} className="w-full bg-gray-50 p-5 rounded-2xl outline-none font-black text-sm border border-transparent focus:border-[#FBBF24] transition-all"/>
+              <input type={t} value={form[k]} onChange={e => setForm({ ...form, [k]: e.target.value })} className="w-full bg-gray-50 p-5 rounded-2xl outline-none font-black text-sm border border-transparent focus:border-[#FBBF24] transition-all" />
             )}
           </div>
         ))}
@@ -1854,7 +1852,7 @@ const ProfileTab = ({ user, chefId, token, onUpdateUser }) => {
       {/* Subscription Pricing Section */}
       <div className="mt-10 pt-10 border-t border-gray-100">
         <h4 className="font-black uppercase text-xs text-[#1A2316] tracking-widest mb-6">Custom Subscription Pricing (PKR)</h4>
-        
+
         <div className="grid md:grid-cols-2 gap-8">
           <div>
             <h5 className="font-black uppercase text-[10px] text-gray-400 tracking-wider mb-4">Weekly Pricing (7 Days Package)</h5>
@@ -1866,7 +1864,7 @@ const ProfileTab = ({ user, chefId, token, onUpdateUser }) => {
               ].map(([k, l]) => (
                 <div key={k}>
                   <label className="text-[9px] font-black uppercase text-gray-400 ml-2 block mb-1">{l}</label>
-                  <input type="number" value={form[k]} onChange={e => setForm({...form, [k]: e.target.value})} className="w-full bg-gray-50 p-4 rounded-xl outline-none font-bold text-sm border border-transparent focus:border-[#FBBF24] transition-all" placeholder="Default: 1000"/>
+                  <input type="number" value={form[k]} onChange={e => setForm({ ...form, [k]: e.target.value })} className="w-full bg-gray-50 p-4 rounded-xl outline-none font-bold text-sm border border-transparent focus:border-[#FBBF24] transition-all" placeholder="Default: 1000" />
                 </div>
               ))}
             </div>
@@ -1882,7 +1880,7 @@ const ProfileTab = ({ user, chefId, token, onUpdateUser }) => {
               ].map(([k, l]) => (
                 <div key={k}>
                   <label className="text-[9px] font-black uppercase text-gray-400 ml-2 block mb-1">{l}</label>
-                  <input type="number" value={form[k]} onChange={e => setForm({...form, [k]: e.target.value})} className="w-full bg-gray-50 p-4 rounded-xl outline-none font-bold text-sm border border-transparent focus:border-[#FBBF24] transition-all" placeholder="Default: 3800"/>
+                  <input type="number" value={form[k]} onChange={e => setForm({ ...form, [k]: e.target.value })} className="w-full bg-gray-50 p-4 rounded-xl outline-none font-bold text-sm border border-transparent focus:border-[#FBBF24] transition-all" placeholder="Default: 3800" />
                 </div>
               ))}
             </div>
@@ -1910,11 +1908,10 @@ const ProfileTab = ({ user, chefId, token, onUpdateUser }) => {
             type="button"
             onClick={handleSetKitchenLocation}
             disabled={settingLoc}
-            className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 ${
-              kitchenLoc
+            className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 ${kitchenLoc
                 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
                 : 'bg-[#1A2316] text-[#FBBF24] hover:bg-[#253120]'
-            }`}
+              }`}
           >
             {settingLoc ? 'Detecting...' : kitchenLoc ? '🔄 Update Location' : '📍 Set Kitchen Location'}
           </button>

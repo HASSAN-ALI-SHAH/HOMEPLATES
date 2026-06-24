@@ -279,7 +279,7 @@ router.delete('/plans/:id', async (req, res) => {
     if (!plan) return res.status(404).json({ message: "Plan not found" });
     res.json({ message: "Plan deleted successfully!" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err.message, message: err.message });
   }
 });
 

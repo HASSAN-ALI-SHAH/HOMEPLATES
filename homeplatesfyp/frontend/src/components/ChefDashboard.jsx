@@ -235,7 +235,7 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
       toast.success(res.data?.message || "Plan deleted!");
       fetchAll();
     } catch (e) {
-      toast.error("Delete failed: " + (e.response?.data?.message || e.message));
+      toast.error("Delete failed: " + (e.response?.data?.message || e.response?.data?.error || e.message));
     }
   };
 
@@ -414,7 +414,9 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
       await API.delete(`/api/chef/dish/${dishId}`, authH);
       setMenuItems(prev => prev.filter(d => d._id !== dishId));
       toast.success('Dish deleted successfully!');
-    } catch (e) { toast.error('Delete failed: ' + (e.response?.data?.message || e.message)); }
+    } catch (e) { 
+      toast.error('Delete failed: ' + (e.response?.data?.message || e.response?.data?.error || e.message)); 
+    }
   };
 
   const handleLogout = () => {
@@ -1461,7 +1463,7 @@ const RecipesTab = ({ chefId, token }) => {
       toast.success(res.data?.message || 'Recipe deleted successfully!');
       fetchRecipes();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to delete recipe');
+      toast.error(err.response?.data?.message || err.response?.data?.error || 'Failed to delete recipe');
     } finally {
       setDeleteRecipeModal(null);
     }

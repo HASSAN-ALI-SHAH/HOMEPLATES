@@ -51,7 +51,17 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
   
   const [kitchenActive, setKitchenActive] = useState(currentUser.isActive !== false);
   const [subscribersFilter, setSubscribersFilter] = useState('active');
-  const [notifications, setNotifications] = useState([]);
+  const [notifications, setNotifications] = useState(() => {
+    try {
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      if (user && user._id) {
+        return JSON.parse(localStorage.getItem(`chef_notifications_${user._id}`) || '[]');
+      }
+    } catch (e) {
+      console.error('Error loading notifications from localStorage:', e);
+    }
+    return [];
+  });
   const [showNoti, setShowNoti] = useState(false);
 
   // B14: Delete dish modal state
@@ -117,11 +127,22 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
     }
   };
 
-  const addNotification = useCallback((title, body) => {
-    setNotifications(prev => [
-      { id: Date.now(), title, body, time: new Date().toLocaleTimeString() },
-      ...prev.slice(0, 19)
-    ]);
+  const addNotification = useCallback((title, body, referenceId = null, time = null) => {
+    setNotifications(prev => {
+      if (referenceId && prev.some(n => n.referenceId === referenceId)) {
+        return prev;
+      }
+      return [
+        {
+          id: Date.now() + Math.random(),
+          title,
+          body,
+          time: time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          referenceId
+        },
+        ...prev.slice(0, 19)
+      ];
+    });
   }, []);
 
   const toggleKitchenStatus = async () => {
@@ -297,21 +318,21 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
       // Show appropriate alerts based on status
       if (!status || status === 'pending') {
         setNewOrderAlert(true); // New incoming order
-        addNotification('🍽️ New Order Received', message || 'A new customer has placed an order.');
+        addNotification('🍽️ New Order Received', message || 'A new customer has placed an order.', `order_pending_${orderId}`);
       } else if (status === 'rider_accepted') {
         setRiderAlert('🚴 A rider has accepted your order and is heading to your kitchen! Head to your kitchen.');
         setTimeout(() => setRiderAlert(null), 10000);
-        addNotification('🚴 Rider Accepted Order', message || 'A rider is heading to your kitchen.');
+        addNotification('🚴 Rider Accepted Order', message || 'A rider is heading to your kitchen.', `order_rider_accepted_${orderId}`);
       } else if (status === 'rider_rejected') {
         setRiderAlert('⚠️ The rider rejected your order. We are finding another rider...');
         setTimeout(() => setRiderAlert(null), 8000);
-        addNotification('⚠️ Rider Rejected', 'We are re-assigning another rider for your order.');
+        addNotification('⚠️ Rider Rejected', 'We are re-assigning another rider for your order.', `order_rider_rejected_${orderId}`);
       } else if (status === 'picked-up' || status === 'picked_up') {
         setRiderAlert('📦 Rider has picked up the food and is on the way to the customer!');
         setTimeout(() => setRiderAlert(null), 8000);
-        addNotification('📦 Order Picked Up', 'Rider has picked up the food.');
+        addNotification('📦 Order Picked Up', 'Rider has picked up the food.', `order_picked_up_${orderId}`);
       } else if (status === 'delivered') {
-        addNotification('✅ Order Delivered', message || 'Your order was delivered successfully. Payment added to wallet.');
+        addNotification('✅ Order Delivered', message || 'Your order was delivered successfully. Payment added to wallet.', `order_delivered_${orderId}`);
         setRiderAlert('✅ Order successfully delivered to the customer! Payment has been added to your wallet.');
         setTimeout(() => setRiderAlert(null), 10000);
         fetchAll(); // refresh wallet balance
@@ -319,19 +340,19 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
       } else if (status === 'rider_cancelled') {
         setRiderAlert('⚠️ Rider cancelled this order. Please check Orders tab to re-assign.');
         setTimeout(() => setRiderAlert(null), 12000);
-        addNotification('⚠️ Rider Cancelled', message || 'Rider cancelled order. Action needed.');
+        addNotification('⚠️ Rider Cancelled', message || 'Rider cancelled order. Action needed.', `order_rider_cancelled_${orderId}`);
         fetchAll();
       // B10: Delivery failed — chef action required
       } else if (status === 'delivery-failed') {
         setRiderAlert('❌ Delivery failed! Go to Orders tab to re-assign a rider or cancel the order.');
         setTimeout(() => setRiderAlert(null), 15000);
-        addNotification('❌ Delivery Failed', message || 'Delivery failed. Action required.');
+        addNotification('❌ Delivery Failed', message || 'Delivery failed. Action required.', `order_delivery_failed_${orderId}`);
         fetchAll();
       } else if (status === 'subscription_approved') {
-        addNotification('💰 New Subscriber', message || 'A subscriber payment was confirmed.');
+        addNotification('💰 New Subscriber', message || 'A subscriber payment was confirmed.', `subscription_approved_${Date.now()}`);
         fetchAll();
       } else if (status === 'cancelled') {
-        addNotification('🚫 Order Cancelled', message || 'An order was cancelled.');
+        addNotification('🚫 Order Cancelled', message || 'An order was cancelled.', `order_cancelled_${orderId}`);
         fetchAll();
       }
     });
@@ -340,10 +361,10 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
     socket.on('withdrawal_update', ({ action, amount, newBalance, message }) => {
       if (action === 'approved') {
         toast.success(`✅ Withdrawal of PKR ${amount} approved!`);
-        addNotification('✅ Withdrawal Approved', message || `PKR ${amount} withdrawal has been processed.`);
+        addNotification('✅ Withdrawal Approved', message || `PKR ${amount} withdrawal has been processed.`, `withdrawal_approved_${Date.now()}`);
       } else if (action === 'rejected') {
         toast.error(`❌ Withdrawal of PKR ${amount} was rejected. Amount refunded.`);
-        addNotification('❌ Withdrawal Rejected', message || `PKR ${amount} refunded to your wallet.`);
+        addNotification('❌ Withdrawal Rejected', message || `PKR ${amount} refunded to your wallet.`, `withdrawal_rejected_${Date.now()}`);
       }
       // B6: Update wallet balance immediately without requiring re-login
       if (typeof newBalance === 'number') {
@@ -358,10 +379,10 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
     // ── Admin approval / rejection in-app notification ──
     socket.on('account_status_update', ({ status, message }) => {
       if (status === 'approved') {
-        addNotification('✅ Account Approved!', message || 'Your chef account has been approved by admin.');
+        addNotification('✅ Account Approved!', message || 'Your chef account has been approved by admin.', `account_status_approved_${Date.now()}`);
         toast.success(message || 'Your chef account is now approved! You can go online.');
       } else if (status === 'rejected') {
-        addNotification('❌ Application Rejected', message || 'Your chef application was rejected. Please re-upload documents.');
+        addNotification('❌ Application Rejected', message || 'Your chef application was rejected. Please re-upload documents.', `account_status_rejected_${Date.now()}`);
         toast.error(message || 'Your chef application was rejected. Check your dashboard.');
       }
       fetchAll(); // refresh isVerified state in UI
@@ -376,6 +397,46 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
       socket.disconnect();
     };
   }, [chefId, fetchAll, addNotification]);
+
+  // ─── Persist notifications to localStorage ───
+  useEffect(() => {
+    if (chefId) {
+      localStorage.setItem(`chef_notifications_${chefId}`, JSON.stringify(notifications));
+    }
+  }, [notifications, chefId]);
+
+  // ─── Synchronize initial and fetched active orders to notifications ───
+  useEffect(() => {
+    if (!orders || orders.length === 0) return;
+    orders.forEach(order => {
+      const formattedTime = new Date(order.orderDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      if (order.status === 'pending') {
+        const refId = `order_pending_${order._id}`;
+        addNotification(
+          '🍽️ New Order Received',
+          `New order from ${order.user?.name || 'Customer'} (PKR ${order.totalAmount}).`,
+          refId,
+          formattedTime
+        );
+      } else if (order.status === 'delivery-failed') {
+        const refId = `order_delivery_failed_${order._id}`;
+        addNotification(
+          '❌ Delivery Failed',
+          `Delivery failed for ${order.user?.name || 'Customer'}'s order. Action required.`,
+          refId,
+          formattedTime
+        );
+      } else if (order.status === 'rider_cancelled') {
+        const refId = `order_rider_cancelled_${order._id}`;
+        addNotification(
+          '⚠️ Rider Cancelled',
+          `Rider cancelled for ${order.user?.name || 'Customer'}'s order. Action needed.`,
+          refId,
+          formattedTime
+        );
+      }
+    });
+  }, [orders, addNotification]);
 
   // ─── Resolve chef's kitchen coordinates (use stored GPS first, geocode as fallback) ──
   useEffect(() => {

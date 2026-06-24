@@ -56,6 +56,7 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
 
   // B14: Delete dish modal state
   const [deleteDishModal, setDeleteDishModal] = useState(null); // { id, name } or null
+  const [deletePlanModal, setDeletePlanModal] = useState(null); // { id, title } or null
   const [rejectOrderModal, setRejectOrderModal] = useState(null); // { orderId } or null
   const [rejectReason, setRejectReason] = useState('');
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
@@ -229,7 +230,7 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
   };
 
   const handleDeletePlan = async (planId) => {
-    if (!window.confirm("Are you sure you want to delete this subscription plan?")) return;
+    setDeletePlanModal(null);
     try {
       const res = await API.delete(`/api/subscriptions/plans/${planId}`, authH);
       toast.success(res.data?.message || "Plan deleted!");
@@ -452,6 +453,30 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
               </button>
               <button
                 onClick={() => deleteDish(deleteDishModal.id)}
+                className="flex-1 py-3 bg-red-500 text-white rounded-2xl font-black text-[10px] uppercase hover:bg-red-600 transition-all"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Subscription Plan Modal */}
+      {deletePlanModal && (
+        <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-[35px] p-8 max-w-sm w-full shadow-2xl">
+            <h3 className="font-black text-lg uppercase italic mb-2 text-red-600">Delete Plan?</h3>
+            <p className="text-sm text-gray-600 font-bold mb-2">
+              Are you sure you want to delete the subscription plan <span className="text-[#1A2316] font-black">"{deletePlanModal.title}"</span>?
+            </p>
+            <p className="text-xs text-gray-400 font-bold mb-6">This action cannot be undone.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeletePlanModal(null)} className="flex-1 py-3 bg-gray-100 rounded-2xl font-black text-[10px] uppercase hover:bg-gray-200 transition-all">
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDeletePlan(deletePlanModal.id)}
                 className="flex-1 py-3 bg-red-500 text-white rounded-2xl font-black text-[10px] uppercase hover:bg-red-600 transition-all"
               >
                 Delete
@@ -1077,7 +1102,7 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
                             <span className="text-xl font-black text-[#1A2316]">PKR {plan.price}</span>
                             <div className="flex gap-2">
                               <button onClick={() => openEditPlan(plan)} className="p-2 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100"><Edit3 size={14}/></button>
-                              <button onClick={() => handleDeletePlan(plan._id)} className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-100"><Trash2 size={14}/></button>
+                              <button onClick={() => setDeletePlanModal({ id: plan._id, title: plan.title })} className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-100"><Trash2 size={14}/></button>
                             </div>
                           </div>
                         </div>

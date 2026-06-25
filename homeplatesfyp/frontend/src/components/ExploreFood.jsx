@@ -175,7 +175,6 @@ const ExploreFood = ({ currentUser, handleAddToCart }) => {
                             item.chef?.toLowerCase().includes(query.toLowerCase());
       const matchesCategory = activeTab === "All" || item.category === activeTab;
       
-      if (viewMode === "trending") return matchesSearch && matchesCategory && (item.tag === "Best Seller" || item.tag === "Popular");
       if (viewMode === "near") return matchesSearch && matchesCategory && item.distance < 1.5;
       
       return matchesSearch && matchesCategory;
@@ -196,7 +195,6 @@ const ExploreFood = ({ currentUser, handleAddToCart }) => {
         </div>
         <nav className="flex-1 px-4 mt-6 space-y-2">
            <NavItem icon={<LayoutGrid size={18}/>} label="Explore" active={viewMode === "explore"} open={sidebarOpen} onClick={() => setViewMode("explore")} />
-           <NavItem icon={<Flame size={18}/>} label="Trending" active={viewMode === "trending"} open={sidebarOpen} onClick={() => setViewMode("trending")} />
            <NavItem 
              icon={<Zap size={18}/>} 
              label="Near You" 
@@ -353,12 +351,12 @@ const ExploreFood = ({ currentUser, handleAddToCart }) => {
                 <div className="flex flex-col items-center py-16 text-gray-300 text-center max-w-sm mx-auto">
                   <ChefHat size={56} className="mb-4 opacity-20 text-gray-400" />
                   <p className="font-black text-[10px] uppercase tracking-widest text-[#1A2316]">No Restaurants Found</p>
-                  <p className="text-[9px] text-gray-400 mt-2 font-bold">No restaurants found near you within 8 km. Try checking the Trending tab instead.</p>
+                  <p className="text-[9px] text-gray-400 mt-2 font-bold">No restaurants found near you within 8 km. Try checking the general Explore tab instead.</p>
                   <button
-                    onClick={() => setViewMode("trending")}
+                    onClick={() => setViewMode("explore")}
                     className="mt-6 bg-[#1A2316] text-[#FBBF24] px-8 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:scale-105 transition-all shadow-md"
                   >
-                    View Trending
+                    Go to Explore
                   </button>
                 </div>
               ) : (

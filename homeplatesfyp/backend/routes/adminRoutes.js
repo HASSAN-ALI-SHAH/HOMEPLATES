@@ -480,10 +480,24 @@ router.patch('/support/:id', authMiddleware, adminOnly, async (req, res) => {
     const ticket = await SupportTicket.findById(req.params.id);
     if (!ticket) return res.status(404).json({ message: 'Ticket not found' });
 
-    if (adminReply !== undefined) ticket.adminReply = adminReply;
-    if (status && ['open', 'in-progress', 'resolved'].includes(status)) ticket.status = status;
-    if (adminReply) {
+    // Handle both adminReply and adminResponse
+    const responseText = adminReply !== undefined ? adminReply : req.body.adminResponse;
+
+    if (responseText !== undefined) {
+      ticket.adminReply = responseText;
+      ticket.adminResponse = responseText;
+      ticket.respondedBy = req.user.id;
+      ticket.respondedAt = new Date();
       ticket.repliedAt = new Date();
+    }
+
+    if (status) {
+      if (['open', 'in-progress', 'resolved', 'pending'].includes(status)) {
+        ticket.status = status;
+      }
+    }
+
+    if (responseText) {
       // Send notification email to the user
       try {
         const emailHtml = `
@@ -497,7 +511,7 @@ router.patch('/support/:id', authMiddleware, adminOnly, async (req, res) => {
             </div>
             <div style="background-color: #f0f4f1; padding: 15px; border-left: 4px solid #1A2316; margin: 15px 0;">
               <strong>Admin Response:</strong><br/>
-              <p style="margin-top: 5px; color: #1A2316; font-weight: bold;">${adminReply}</p>
+              <p style="margin-top: 5px; color: #1A2316; font-weight: bold;">${responseText}</p>
             </div>
             <p>Regards,<br/>HomePlates Support Team</p>
           </div>
@@ -505,6 +519,32 @@ router.patch('/support/:id', authMiddleware, adminOnly, async (req, res) => {
         await sendEmail(ticket.email, `HomePlates Support: Response to "${ticket.subject}"`, emailHtml);
       } catch (emailErr) {
         console.error("Failed to send support response email:", emailErr.message);
+      }
+
+      // If user is logged in, create a real-time Notification and emit socket event
+      if (ticket.userId) {
+        try {
+          const NotificationModel = require('../models/Notification');
+          const socketHelper = require('../socket');
+
+          const userNotification = new NotificationModel({
+            recipientRole: 'customer',
+            recipientId: ticket.userId,
+            type: 'support_resolved',
+            referenceId: ticket._id,
+            message: `Admin replied to your support query: "${ticket.subject}". Reply: "${responseText}"`
+          });
+          await userNotification.save();
+
+          const io = socketHelper.getIo();
+          io.to(`user_${ticket.userId.toString()}`).emit('supportQueryResolved', {
+            queryId: ticket._id,
+            subject: ticket.subject,
+            adminResponse: responseText
+          });
+        } catch (err) {
+          console.error("Error creating support resolution notification/socket event:", err);
+        }
       }
     }
 

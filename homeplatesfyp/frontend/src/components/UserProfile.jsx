@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import {
   LogOut, ChevronRight, Truck, Save, Edit2, User,
   Pause, Play, Package, Star, HelpCircle, Home,
-  Phone, Mail, MapPin, Clock, CheckCircle, XCircle, AlertTriangle, X
+  Phone, Mail, MapPin, Clock, CheckCircle, XCircle, AlertTriangle, X,
+  Bell, MessageSquare
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from '../utils/toast';
@@ -44,6 +45,11 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
   const [expandedSubId, setExpandedSubId] = useState(null);
   const [selectedScreenshot, setSelectedScreenshot] = useState(null);
 
+  // Help & Support loop + Alerts states
+  const [supportTickets, setSupportTickets] = useState([]);
+  const [selectedTicket, setSelectedTicket] = useState(null);
+  const [alerts, setAlerts] = useState([]);
+
   useEffect(() => {
     if (selectedScreenshot) {
       document.body.style.overflow = 'hidden';
@@ -62,12 +68,13 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
     if (!user?._id) return;
     setIsLoading(true);
     try {
-      const [userRes, ordersRes, subsRes] = await Promise.allSettled([
+      const headers = { Authorization: `Bearer ${localStorage.getItem('token')}` };
+      const [userRes, ordersRes, subsRes, supportRes, alertsRes] = await Promise.allSettled([
         fetch(`${window.API_URL}/api/user/profile/${user._id}`),
-        fetch(`${window.API_URL}/api/orders/my-orders/${user._id}`, {
-          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-        }),
-        fetch(`${window.API_URL}/api/subscriptions/${user._id}`)
+        fetch(`${window.API_URL}/api/orders/my-orders/${user._id}`, { headers }),
+        fetch(`${window.API_URL}/api/subscriptions/${user._id}`),
+        fetch(`${window.API_URL}/api/support/my`, { headers }),
+        fetch(`${window.API_URL}/api/support/notifications`, { headers })
       ]);
 
       if (userRes.status === 'fulfilled' && userRes.value.ok) {
@@ -88,6 +95,16 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
       if (subsRes.status === 'fulfilled' && subsRes.value.ok) {
         const s = await subsRes.value.json();
         setSubscriptions(Array.isArray(s) ? s : []);
+      }
+
+      if (supportRes.status === 'fulfilled' && supportRes.value.ok) {
+        const sup = await supportRes.value.json();
+        setSupportTickets(Array.isArray(sup) ? sup : []);
+      }
+
+      if (alertsRes.status === 'fulfilled' && alertsRes.value.ok) {
+        const al = await alertsRes.value.json();
+        setAlerts(Array.isArray(al) ? al : []);
       }
     } catch (err) {
       console.error('UserProfile fetch error:', err);
@@ -116,6 +133,11 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
         toast.error(message || '❌ Payment rejected. Please re-upload your proof.');
         fetchData();
         setActiveTab('subscriptions'); // Auto-switch to show rejection banner
+      });
+
+      socket.on('supportQueryResolved', ({ subject, adminResponse }) => {
+        toast.success(`✉️ Support Response for "${subject}": ${adminResponse || 'Resolved!'}`);
+        fetchData();
       });
 
       return () => socket.disconnect();
@@ -309,6 +331,7 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
     { id: 'orders', label: 'My Orders', icon: Package },
     { id: 'subscriptions', label: 'Subscription Status', icon: Star },
     { id: 'help', label: 'Help & Support', icon: HelpCircle },
+    { id: 'notifications', label: 'Alerts', icon: Bell },
   ];
 
   return (
@@ -391,6 +414,9 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
                 <span className="flex items-center gap-3">
                   <tab.icon size={14} />
                   {tab.label}
+                  {tab.id === 'notifications' && alerts.filter(a => !a.isRead).length > 0 && (
+                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                  )}
                 </span>
                 <ChevronRight size={14} />
               </button>
@@ -1038,6 +1064,7 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
                           if (res.ok) {
                             toast.success("Your message has been sent to our support team. We'll respond within 24 hours.");
                             setHelpMessage('');
+                            fetchData();
                           } else {
                             const errData = await res.json();
                             toast.error(errData.message || "Failed to submit support request.");
@@ -1052,6 +1079,40 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
                     >
                       {sendingHelp ? 'Sending...' : 'Send to Support Team'}
                     </button>
+                  </div>
+
+                  {/* My Support Queries */}
+                  <div className="bg-white p-7 rounded-[35px] border border-gray-100 shadow-sm">
+                    <div className="flex items-center gap-2 mb-6">
+                      <MessageSquare className="text-[#FBBF24]" size={20}/>
+                      <h3 className="text-lg font-black text-[#1A2316] uppercase italic">My Support Queries</h3>
+                    </div>
+                    {supportTickets.length === 0 ? (
+                      <p className="text-xs text-gray-400 font-bold italic">You haven't submitted any support queries yet.</p>
+                    ) : (
+                      <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                        {supportTickets.map(ticket => {
+                          const isResolved = ticket.status === 'resolved';
+                          return (
+                            <div 
+                              key={ticket._id}
+                              onClick={() => setSelectedTicket(ticket)}
+                              className="p-4 bg-gray-50 hover:bg-gray-100 border border-gray-150 rounded-2xl flex items-center justify-between gap-4 cursor-pointer transition-all"
+                            >
+                              <div className="min-w-0 text-left">
+                                <p className="font-black text-xs text-[#1A2316] truncate">{ticket.subject}</p>
+                                <p className="text-[10px] text-gray-400 font-bold truncate mt-1">{ticket.message}</p>
+                              </div>
+                              <span className={`px-2.5 py-1 rounded-md text-[8px] font-black uppercase tracking-widest shrink-0 ${
+                                isResolved ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-700'
+                              }`}>
+                                {isResolved ? 'Resolved' : 'Awaiting Response'}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
 
                   {/* Quick links */}
@@ -1070,6 +1131,128 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
                       </button>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* ===== ALERTS TAB ===== */}
+              {activeTab === 'notifications' && (
+                <div className="space-y-6 text-left">
+                  <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-3xl font-black uppercase italic tracking-tighter">
+                      My Alerts<span className="text-[#FBBF24]">.</span>
+                    </h2>
+                    {alerts.length > 0 && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            const res = await fetch(window.API_URL + '/api/support/notifications', {
+                              method: 'DELETE',
+                              headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+                            });
+                            if (res.ok) {
+                              setAlerts([]);
+                              toast.success("All alerts cleared!");
+                            }
+                          } catch (err) {
+                            toast.error("Failed to clear alerts.");
+                          }
+                        }}
+                        className="text-[10px] font-black uppercase text-red-500 hover:underline border-none bg-transparent cursor-pointer"
+                      >
+                        Clear All
+                      </button>
+                    )}
+                  </div>
+
+                  {alerts.length === 0 ? (
+                    <div className="bg-gray-50 border border-gray-150 p-12 rounded-[35px] text-center flex flex-col justify-center items-center h-64 text-gray-300">
+                      <Bell size={40} className="mb-4 opacity-20" />
+                      <p className="font-black text-[10px] uppercase">No Alerts Yet</p>
+                      <p className="text-xs text-gray-400 mt-2 font-bold max-w-[240px] mx-auto">Any updates on your orders or support queries will appear here.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {alerts.map(noti => (
+                        <div 
+                          key={noti._id} 
+                          className={`p-6 rounded-[28px] border-2 flex items-start justify-between gap-4 transition-all ${
+                            noti.isRead 
+                              ? 'bg-gray-50 border-gray-100 opacity-60' 
+                              : 'bg-yellow-50/50 border-[#FBBF24]/20 shadow-sm'
+                          }`}
+                        >
+                          <div className="flex items-start gap-4">
+                            <div className={`p-3 rounded-2xl ${noti.isRead ? 'bg-gray-100 text-gray-400' : 'bg-[#FEF9ED] text-[#FBBF24]'}`}>
+                              <Bell size={18} />
+                            </div>
+                            <div>
+                              <p className={`text-xs font-bold leading-relaxed ${noti.isRead ? 'text-gray-500' : 'text-[#1A2316]'}`}>
+                                {noti.message}
+                              </p>
+                              <p className="text-[9px] text-gray-400 font-black uppercase mt-1 tracking-wider">
+                                {new Date(noti.createdAt).toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex flex-col gap-2 shrink-0">
+                            {noti.type === 'support_resolved' && (
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    const res = await fetch(`${window.API_URL}/api/support/my-queries/${noti.referenceId}`, {
+                                      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+                                    });
+                                    if (res.ok) {
+                                      const ticket = await res.json();
+                                      setSelectedTicket(ticket);
+                                      if (!noti.isRead) {
+                                        fetch(`${window.API_URL}/api/support/notifications/${noti._id}/read`, {
+                                          method: 'PATCH',
+                                          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+                                        }).then(readRes => {
+                                          if (readRes.ok) {
+                                            setAlerts(prev => prev.map(a => a._id === noti._id ? { ...a, isRead: true } : a));
+                                          }
+                                        }).catch(() => {});
+                                      }
+                                    } else {
+                                      toast.error("Failed to fetch query details.");
+                                    }
+                                  } catch (err) {
+                                    toast.error("Error loading query details.");
+                                  }
+                                }}
+                                className="text-[8px] font-black uppercase text-[#1A2316] bg-[#FBBF24] hover:opacity-90 px-3 py-1.5 rounded-lg shadow-sm transition-all cursor-pointer border-none text-center"
+                              >
+                                View Reply
+                              </button>
+                            )}
+                            {!noti.isRead && (
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    const res = await fetch(`${window.API_URL}/api/support/notifications/${noti._id}/read`, {
+                                      method: 'PATCH',
+                                      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+                                    });
+                                    if (res.ok) {
+                                      setAlerts(prev => prev.map(a => a._id === noti._id ? { ...a, isRead: true } : a));
+                                      toast.success("Marked as read");
+                                    }
+                                  } catch (err) {
+                                    toast.error("Failed to update notification.");
+                                  }
+                                }}
+                                className="text-[8px] font-black uppercase text-[#1A2316] bg-white border border-gray-200 hover:border-gray-400 px-3 py-1.5 rounded-lg shadow-sm transition-all cursor-pointer"
+                              >
+                                Mark Read
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </>
@@ -1095,6 +1278,54 @@ const UserProfile = ({ user, onLogout, onUserUpdate }) => {
               className="max-w-full max-h-[80vh] object-contain rounded-2xl shadow-2xl" 
               alt="Zoomed Screenshot" 
             />
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Selected Support Ticket details modal */}
+      {selectedTicket && createPortal(
+        <div 
+          className="fixed inset-0 z-[100000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          onClick={() => setSelectedTicket(null)}
+        >
+          <div className="bg-white rounded-[35px] p-8 max-w-xl w-full shadow-2xl relative text-left text-[#1A2316]" onClick={(e) => e.stopPropagation()}>
+            <button 
+              onClick={() => setSelectedTicket(null)} 
+              className="absolute top-6 right-6 p-2 bg-gray-100 hover:bg-gray-200 rounded-full text-gray-500 transition-all border-none cursor-pointer outline-none flex items-center justify-center"
+            >
+              <X size={18} />
+            </button>
+            <h3 className="font-black text-xl uppercase italic mb-1">Support Query Details</h3>
+            <p className="text-[9px] text-gray-400 font-black uppercase tracking-widest mb-6">Subject: {selectedTicket.subject}</p>
+            
+            <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-2 mb-6 custom-scrollbar">
+              {/* User query */}
+              <div className="bg-gray-50 p-5 rounded-2xl border border-gray-150">
+                <p className="text-[8px] font-black uppercase text-gray-400 mb-1">Your Message ({new Date(selectedTicket.createdAt).toLocaleString()})</p>
+                <p className="text-xs font-bold leading-relaxed">{selectedTicket.message}</p>
+              </div>
+              
+              {/* Admin response */}
+              {(selectedTicket.status === 'resolved' || selectedTicket.adminResponse || selectedTicket.adminReply) ? (
+                <div className="bg-emerald-50 p-5 rounded-2xl border border-emerald-100 text-left">
+                  <p className="text-[8px] font-black uppercase text-emerald-600 mb-1">Admin Response ({selectedTicket.respondedAt ? new Date(selectedTicket.respondedAt).toLocaleString() : selectedTicket.repliedAt ? new Date(selectedTicket.repliedAt).toLocaleString() : 'Just now'})</p>
+                  <p className="text-xs font-bold leading-relaxed text-[#1A2316]">{selectedTicket.adminResponse || selectedTicket.adminReply}</p>
+                </div>
+              ) : (
+                <div className="bg-orange-50 p-5 rounded-2xl border border-orange-100 flex items-center gap-3">
+                  <div className="w-2 h-2 rounded-full bg-orange-500 animate-ping" />
+                  <p className="text-xs font-bold text-orange-700">Your query is still being reviewed. We'll notify you once it's answered.</p>
+                </div>
+              )}
+            </div>
+            
+            <button 
+              onClick={() => setSelectedTicket(null)} 
+              className="w-full py-4 bg-[#1A2316] text-[#FBBF24] rounded-2xl font-black text-[10px] uppercase tracking-wider hover:opacity-90 transition-all border-none cursor-pointer"
+            >
+              Close Thread
+            </button>
           </div>
         </div>,
         document.body

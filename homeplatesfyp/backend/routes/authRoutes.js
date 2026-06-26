@@ -62,6 +62,7 @@ router.post('/signup', async (req, res) => {
         const newNotification = new Notification({
           recipientRole: 'admin',
           type: 'rider_pending',
+          title: '🚴 Rider Registration',
           referenceId: newUser._id,
           message: `New rider registered: ${name}`
         });
@@ -76,6 +77,30 @@ router.post('/signup', async (req, res) => {
         });
       } catch (err) {
         console.error("Error creating rider pending notification/socket event:", err);
+      }
+    }
+
+    // Create Admin notification and emit socket event for Chef signup
+    if (role === 'chef') {
+      try {
+        const Notification = require('../models/Notification');
+        const socketHelper = require('../socket');
+        
+        const newNotification = new Notification({
+          recipientRole: 'admin',
+          type: 'chef_pending',
+          title: '👨‍🍳 Chef Registration',
+          referenceId: newUser._id,
+          message: `New chef registered: ${name}`
+        });
+        await newNotification.save();
+
+        const io = socketHelper.getIo();
+        io.to('admin_room').emit('new_chef_registration', {
+          message: `New chef registered: ${name}`
+        });
+      } catch (err) {
+        console.error("Error creating chef pending notification/socket event:", err);
       }
     }
 

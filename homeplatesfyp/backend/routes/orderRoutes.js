@@ -15,6 +15,37 @@ module.exports = (io) => {
     try { io.to(room).emit(event, data); } catch (_) {}
   };
 
+  const notifyRidersOfDeliveryAvailable = async (orderId) => {
+    try {
+      const Notification = require('../models/Notification');
+      const order = await Order.findById(orderId).populate('chef', 'city name');
+      const chefCity = order.chef?.city;
+      if (chefCity) {
+        const riders = await User.find({ role: 'rider', city: chefCity, verificationStatus: 'verified' });
+        for (const rider of riders) {
+          const existing = await Notification.findOne({
+            recipientId: rider._id,
+            type: 'new_order',
+            referenceId: orderId,
+            isRead: false
+          });
+          if (!existing) {
+            await new Notification({
+              recipientId: rider._id,
+              recipientRole: 'rider',
+              type: 'new_order',
+              title: '🍽️ New Delivery Available!',
+              referenceId: orderId,
+              message: `A new delivery request from ${order.chef?.name || 'Chef'} is ready for pickup.`
+            }).save();
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Error creating rider notifications for new delivery:", err);
+    }
+  };
+
   // ----------------------------------------------------
   // 1. Place a New Order
   // ----------------------------------------------------
@@ -344,10 +375,30 @@ module.exports = (io) => {
         safeEmit('admin_room', 'delivery_update', {
           message: `Order #${order._id.toString().slice(-6)} has been marked as delivered.`
         });
+        const chefMsg = '✅ Order delivered successfully! Payment added to your wallet.';
         safeEmit(`chef_${order.chef}`, 'new_order_notification', {
           orderId: order._id, status: 'delivered',
-          message: '✅ Order delivered successfully! Payment added to your wallet.'
+          message: chefMsg
         });
+
+        const Notification = require('../models/Notification');
+        await new Notification({
+          recipientId: order.chef,
+          recipientRole: 'chef',
+          type: 'order_status',
+          title: '✅ Order Delivered',
+          referenceId: order._id,
+          message: chefMsg
+        }).save();
+
+        await new Notification({
+          recipientId: order.user,
+          recipientRole: 'user',
+          type: 'order_status',
+          title: '✅ Order Delivered',
+          referenceId: order._id,
+          message: `Your Order #${order._id.toString().slice(-6)} has been delivered successfully.`
+        }).save();
 
       // ─── DELIVERY FAILED ─────────────────────────────────────────────────────
       // B8: Unassign rider; B9: notify chef + user + admin
@@ -360,19 +411,40 @@ module.exports = (io) => {
         await order.save();
 
         // B9: Notify chef
+        const chefMsg = `⚠️ Delivery failed for Order #${order._id.toString().slice(-6)}. Reason: ${failureReason || 'Unable to deliver'}. Please take action.`;
         safeEmit(`chef_${order.chef}`, 'new_order_notification', {
           orderId: order._id, status: 'delivery-failed',
-          message: `⚠️ Delivery failed for Order #${order._id.toString().slice(-6)}. Reason: ${failureReason || 'Unable to deliver'}. Please take action.`
+          message: chefMsg
         });
         // B9: Notify customer
         safeEmit(`order_${order._id}`, 'order_status_changed', {
           orderId: order._id, status: 'delivery-failed',
           message: `Delivery was unsuccessful. Reason: ${failureReason || 'Rider could not complete delivery'}`
         });
+        const customerMsg = `Your delivery was unsuccessful. Reason: ${failureReason || 'Rider could not complete delivery'}`;
         safeEmit(`user_${order.user}`, 'order_notification', {
           type: 'delivery_failed', orderId: order._id,
-          message: `Your delivery was unsuccessful. Reason: ${failureReason || 'Rider could not complete delivery'}`
+          message: customerMsg
         });
+
+        const Notification = require('../models/Notification');
+        await new Notification({
+          recipientId: order.chef,
+          recipientRole: 'chef',
+          type: 'order_status',
+          title: '❌ Delivery Failed',
+          referenceId: order._id,
+          message: chefMsg
+        }).save();
+
+        await new Notification({
+          recipientId: order.user,
+          recipientRole: 'user',
+          type: 'order_status',
+          title: '❌ Delivery Failed',
+          referenceId: order._id,
+          message: customerMsg
+        }).save();
         // B9: Notify admin
         safeEmit('admin_room', 'delivery_update', {
           message: `⚠️ Delivery failed for Order #${order._id.toString().slice(-6)}.`
@@ -436,19 +508,40 @@ module.exports = (io) => {
         const penaltyMsg = cancelledAfterPickup && penaltyAmount > 0
           ? ` A penalty of PKR ${penaltyAmount.toLocaleString()} has been applied to the rider.`
           : '';
+        const chefMsg = `⚠️ Rider${riderUser ? (' ' + riderUser.name) : ''} cancelled Order #${order._id.toString().slice(-6)} after pickup.${penaltyMsg} Please re-assign a new rider.`;
         safeEmit(`chef_${order.chef}`, 'new_order_notification', {
           orderId: order._id, status: 'rider_cancelled',
-          message: `⚠️ Rider${riderUser ? (' ' + riderUser.name) : ''} cancelled Order #${order._id.toString().slice(-6)} after pickup.${penaltyMsg} Please re-assign a new rider.`
+          message: chefMsg
         });
         // Notify customer
         safeEmit(`order_${order._id}`, 'order_status_changed', {
           orderId: order._id, status: 'rider_cancelled',
           message: 'The rider cancelled your delivery. The chef is assigning a new rider — your order is safe.'
         });
+        const customerMsg = '🔄 Your rider cancelled. We are finding a new rider. Your order is being re-assigned — please wait.';
         safeEmit(`user_${order.user}`, 'order_notification', {
           type: 'rider_cancelled', orderId: order._id,
-          message: '🔄 Your rider cancelled. We are finding a new rider. Your order is being re-assigned — please wait.'
+          message: customerMsg
         });
+
+        const Notification = require('../models/Notification');
+        await new Notification({
+          recipientId: order.chef,
+          recipientRole: 'chef',
+          type: 'order_status',
+          title: '⚠️ Rider Cancelled',
+          referenceId: order._id,
+          message: chefMsg
+        }).save();
+
+        await new Notification({
+          recipientId: order.user,
+          recipientRole: 'user',
+          type: 'order_status',
+          title: '⚠️ Rider Cancelled',
+          referenceId: order._id,
+          message: customerMsg
+        }).save();
         return res.json({ message: 'Order marked as rider_cancelled, chef notified, penalty applied.', order, penaltyAmount });
 
       // ─── CANCELLED / FAILED (legacy) ─────────────────────────────────────────
@@ -475,9 +568,10 @@ module.exports = (io) => {
         }
 
         // B16: Notify chef when user/rider cancels
+        const chefMsg = `Order #${order._id.toString().slice(-6)} was cancelled. Reason: ${reason}`;
         safeEmit(`chef_${order.chef}`, 'new_order_notification', {
           orderId: order._id, status: 'cancelled',
-          message: `Order #${order._id.toString().slice(-6)} was cancelled. Reason: ${reason}`
+          message: chefMsg
         });
         // Notify rider if assigned
         if (order.rider) {
@@ -492,10 +586,41 @@ module.exports = (io) => {
           message: `Your order was cancelled. Reason: ${reason}`,
           reason
         });
+        const customerMsg = `Your order was cancelled. Reason: ${reason}`;
         safeEmit(`user_${order.user}`, 'order_notification', {
           type: 'order_cancelled', orderId: order._id,
-          message: `Your order was cancelled. Reason: ${reason}`
+          message: customerMsg
         });
+
+        const Notification = require('../models/Notification');
+        await new Notification({
+          recipientId: order.chef,
+          recipientRole: 'chef',
+          type: 'order_status',
+          title: '🚫 Order Cancelled',
+          referenceId: order._id,
+          message: chefMsg
+        }).save();
+
+        await new Notification({
+          recipientId: order.user,
+          recipientRole: 'user',
+          type: 'order_status',
+          title: '🚫 Order Cancelled',
+          referenceId: order._id,
+          message: customerMsg
+        }).save();
+
+        if (order.rider) {
+          await new Notification({
+            recipientId: order.rider,
+            recipientRole: 'rider',
+            type: 'order_status',
+            title: '🚫 Order Cancelled',
+            referenceId: order._id,
+            message: `Order #${order._id.toString().slice(-6)} was cancelled.`
+          }).save();
+        }
       }
 
       // Emit real-time updates to customer tracking page and user room
@@ -515,6 +640,38 @@ module.exports = (io) => {
         message: `Order status updated to: ${status}`
       });
 
+      // Save database notifications for other general status updates (e.g. preparing, accepted, ready-for-pickup)
+      if (!['delivered', 'delivery-failed', 'rider_cancelled', 'cancelled'].includes(status)) {
+        const customerMsg = status === 'out-for-delivery'
+          ? '🚴 Your order is out for delivery!'
+          : `Your order status changed to: ${status}`;
+        
+        const chefMsg = `Order status updated to: ${status}`;
+        
+        const Notification = require('../models/Notification');
+        try {
+          await new Notification({
+            recipientId: order.user,
+            recipientRole: 'user',
+            type: 'order_status',
+            title: '📍 Order Update',
+            referenceId: order._id,
+            message: customerMsg
+          }).save();
+
+          await new Notification({
+            recipientId: order.chef,
+            recipientRole: 'chef',
+            type: 'order_status',
+            title: '📍 Order Update',
+            referenceId: order._id,
+            message: chefMsg
+          }).save();
+        } catch (dbErr) {
+          console.error("Failed to save generic status update notification to DB:", dbErr);
+        }
+      }
+
       // Emit to Admin Dashboard
       safeEmit('admin_room', 'delivery_update', {
         message: `Order #${order._id.toString().slice(-6)} status updated to ${status}.`
@@ -533,6 +690,7 @@ module.exports = (io) => {
             order: populatedOrder,
             message: 'New delivery request available.'
           });
+          await notifyRidersOfDeliveryAvailable(order._id);
         }
       }
 
@@ -586,10 +744,21 @@ module.exports = (io) => {
         .populate('chef', 'name phone address specialty kitchenName about img city')
         .populate('items.dishId', 'name img price');
 
+      const chefMsg = `🚴 A rider has accepted your delivery for Order #${order._id.toString().slice(-6)}.`;
       safeEmit(`chef_${order.chef}`, 'new_order_notification', {
         orderId: order._id, status: 'rider_accepted',
-        message: `🚴 A rider has accepted your delivery for Order #${order._id.toString().slice(-6)}.`
+        message: chefMsg
       });
+
+      const Notification = require('../models/Notification');
+      await new Notification({
+        recipientId: order.chef,
+        recipientRole: 'chef',
+        type: 'order_status',
+        title: '🚴 Rider Accepted Order',
+        referenceId: order._id,
+        message: chefMsg
+      }).save();
 
       safeEmit(`order_${order._id}`, 'order_status_changed', {
         orderId: order._id, status: 'ready-for-pickup', riderId: order.rider
@@ -640,11 +809,22 @@ module.exports = (io) => {
         message: '⚠️ A rider rejected your order. Another rider will be assigned soon.'
       });
 
+      const Notification = require('../models/Notification');
+      await new Notification({
+        recipientId: order.chef,
+        recipientRole: 'chef',
+        type: 'order_status',
+        title: '⚠️ Rider Rejected Order',
+        referenceId: order._id,
+        message: 'A rider rejected your order. Another rider will be assigned soon.'
+      }).save();
+
       const chefCity = populatedOrder.chef?.city;
       if (chefCity) {
         safeEmit(`riders_${chefCity.toLowerCase()}`, 'new_delivery_available', {
           order: populatedOrder, message: 'New delivery request available.'
         });
+        await notifyRidersOfDeliveryAvailable(order._id);
       }
 
       res.json({ message: 'Order rejected, re-broadcasting to riders.', order: populatedOrder });
@@ -736,6 +916,7 @@ module.exports = (io) => {
           safeEmit(`riders_${chefCity.toLowerCase()}`, 'new_delivery_available', {
             order: populatedOrder, message: 'Re-assigned delivery request available.'
           });
+          await notifyRidersOfDeliveryAvailable(order._id);
         }
 
         return res.json({ message: 'Order re-assigned to available riders.', order });
@@ -796,6 +977,7 @@ module.exports = (io) => {
         safeEmit(`riders_${chefCity.toLowerCase()}`, 'new_delivery_available', {
           order, message: '🔔 Urgent: Delivery request still available!'
         });
+        await notifyRidersOfDeliveryAvailable(order._id);
       }
 
       // Also notify admin
@@ -854,6 +1036,7 @@ module.exports = (io) => {
           order: populatedOrder,
           message: '🍽️ A previously cancelled delivery has been re-opened. Accept now!'
         });
+        await notifyRidersOfDeliveryAvailable(order._id);
       }
 
       res.json({ message: 'Order reassigned to available riders.', order: populatedOrder });

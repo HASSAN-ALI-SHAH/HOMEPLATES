@@ -65,19 +65,33 @@ router.put('/verify-chef/:id', authMiddleware, adminOnly, async (req, res) => {
     // ── Real-time in-app notification to the chef ──
     try {
       const io = socketHelper.getIo();
+      const Notification = require('../models/Notification');
+      let msg = '';
       if (action === 'approve') {
+        msg = '🎉 Congratulations! Your HomePlates chef account has been approved. You can now go online and start accepting orders!';
         io.to(`chef_${chef._id}`).emit('account_status_update', {
           status: 'approved',
-          message: '🎉 Congratulations! Your HomePlates chef account has been approved. You can now go online and start accepting orders!'
+          message: msg
         });
       } else {
+        msg = `❌ Your chef application was rejected. Reason: ${req.body.reason || 'Document mismatch'}. Please re-upload your documents from the dashboard.`;
         io.to(`chef_${chef._id}`).emit('account_status_update', {
           status: 'rejected',
-          message: `❌ Your chef application was rejected. Reason: ${req.body.reason || 'Document mismatch'}. Please re-upload your documents from the dashboard.`
+          message: msg
         });
       }
+
+      const newNotification = new Notification({
+        recipientId: chef._id,
+        recipientRole: 'chef',
+        type: 'chef_approval',
+        title: action === 'approve' ? '✅ Account Approved!' : '❌ Application Rejected',
+        referenceId: chef._id,
+        message: msg
+      });
+      await newNotification.save();
     } catch (socketErr) {
-      console.error('Socket emit failed on chef verification:', socketErr);
+      console.error('Socket/Notification failed on chef verification:', socketErr);
     }
 
     res.json({ message: `Chef ${action === 'approve' ? 'Approved' : 'Rejected'} successfully!`, chef });

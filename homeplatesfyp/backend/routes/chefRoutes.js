@@ -504,6 +504,16 @@ router.post('/resubmit-verification', authMiddleware, async (req, res) => {
 
     // Emit notification to admin room
     try {
+      const Notification = require('../models/Notification');
+      const newNotification = new Notification({
+        recipientRole: 'admin',
+        type: 'chef_pending',
+        title: '👨‍🍳 Chef Resubmission',
+        referenceId: chef._id,
+        message: `Chef ${chef.name} has resubmitted their verification request.`
+      });
+      await newNotification.save();
+
       const io = socketHelper.getIo();
       io.to('admin_room').emit('new_chef_registration', {
         message: `Chef ${chef.name} has resubmitted their verification request.`

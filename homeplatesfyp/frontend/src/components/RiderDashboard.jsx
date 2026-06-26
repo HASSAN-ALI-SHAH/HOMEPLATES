@@ -76,17 +76,28 @@ const RiderDashboard = ({ user: propUser, onLogout, onUserUpdate }) => {
     if (!riderId) return;
     setLoading(true);
     try {
-      const [availRes, activeRes, walletRes, withdrawalsRes] = await Promise.allSettled([
+      const [availRes, activeRes, walletRes, withdrawalsRes, notisRes] = await Promise.allSettled([
         API.get('/api/orders/rider/available', authH),
         API.get(`/api/orders/rider/active/${riderId}`),
         API.get(`/api/wallet/${riderId}`, authH),
-        API.get('/api/wallet/rider/withdrawals', authH)
+        API.get('/api/wallet/rider/withdrawals', authH),
+        API.get('/api/support/notifications', authH)
       ]);
 
       if (availRes.status === 'fulfilled') setAvailableOrders(availRes.value.data || []);
       if (activeRes.status === 'fulfilled') setActiveOrder(activeRes.value.data || null);
       if (walletRes.status === 'fulfilled') setWalletData(walletRes.value.data);
       if (withdrawalsRes.status === 'fulfilled') setWithdrawRequests(withdrawalsRes.value.data || []);
+      if (notisRes.status === 'fulfilled') {
+        const dbNotis = notisRes.value.data || [];
+        const mapped = dbNotis.map(item => ({
+          id: item._id,
+          title: item.title || 'Alert',
+          body: item.message,
+          time: new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }));
+        setNotifications(mapped);
+      }
     } catch (e) {
       console.error('Fetch error:', e);
     } finally {
@@ -140,6 +151,9 @@ const RiderDashboard = ({ user: propUser, onLogout, onUserUpdate }) => {
 
     socket.on('connect', () => {
       socket.emit('join_rider_room', riderId);
+      if (isOnlineRef.current) {
+        socket.emit('go_online', riderId);
+      }
     });
 
     // 🚴 New order available for delivery — show full alert modal
@@ -461,6 +475,17 @@ const RiderDashboard = ({ user: propUser, onLogout, onUserUpdate }) => {
       toast.error('Error: ' + (e.response?.data?.message || e.message));
     } finally {
       setSavingProfile(false);
+    }
+  };
+
+  const handleClearNotifications = async () => {
+    try {
+      await API.delete('/api/support/notifications', authH);
+      setNotifications([]);
+      toast.success("Notifications cleared");
+    } catch (e) {
+      console.error("Failed to clear notifications", e);
+      toast.error("Failed to clear notifications");
     }
   };
 
@@ -810,7 +835,7 @@ const RiderDashboard = ({ user: propUser, onLogout, onUserUpdate }) => {
                 <div className="absolute right-0 mt-4 w-80 bg-white rounded-[28px] shadow-2xl border border-gray-100 overflow-hidden z-[100]">
                   <div className="p-5 border-b border-gray-50 flex justify-between items-center bg-[#1A2316]">
                     <h5 className="text-white font-black uppercase text-[10px] tracking-widest">Alerts ({unreadNoti})</h5>
-                    <button onClick={() => setNotifications([])} className="text-[#FBBF24] text-[8px] font-black uppercase underline">Clear All</button>
+                    <button onClick={handleClearNotifications} className="text-[#FBBF24] text-[8px] font-black uppercase underline">Clear All</button>
                   </div>
                   <div className="max-h-[350px] overflow-y-auto divide-y divide-gray-50">
                     {notifications.length > 0 ? notifications.map(n => (

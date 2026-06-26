@@ -147,10 +147,23 @@ router.patch('/:id/pause', async (req, res) => {
       const io = socketHelper.getIo();
       const subWithUser = await Subscription.findById(sub._id).populate('userId', 'name');
       const customerName = subWithUser.userId?.name || 'A customer';
+      const msg = `${customerName} has ${isPaused ? 'paused' : 'resumed'} their subscription.`;
+      
       io.to(`chef_${sub.chefId}`).emit('new_order_notification', {
         status: isPaused ? 'paused' : 'active',
-        message: `${customerName} has ${isPaused ? 'paused' : 'resumed'} their subscription.`
+        message: msg
       });
+
+      const Notification = require('../models/Notification');
+      const newNotification = new Notification({
+        recipientId: sub.chefId,
+        recipientRole: 'chef',
+        type: 'subscription_status',
+        title: isPaused ? '🚫 Subscription Paused' : '✅ Subscription Resumed',
+        referenceId: sub._id,
+        message: msg
+      });
+      await newNotification.save();
     } catch (socketErr) {
       console.error("Socket emit failed on subscription pause/resume:", socketErr);
     }
@@ -369,6 +382,8 @@ router.patch('/:id/verify-payment', authMiddleware, adminOnly, async (req, res) 
     const chefIdStr = sub.chefId && sub.chefId._id ? sub.chefId._id.toString() : (sub.chefId ? sub.chefId.toString() : '');
     const userName = sub.userId && sub.userId.name ? sub.userId.name : 'A customer';
 
+    const Notification = require('../models/Notification');
+
     if (action === 'approve') {
       sub.paymentStatus = 'approved';
       sub.status = 'active';
@@ -376,17 +391,39 @@ router.patch('/:id/verify-payment', authMiddleware, adminOnly, async (req, res) 
 
       // B4: Notify user in real-time — subscription is now active
       if (userIdStr) {
+        const userMsg = `✅ Your payment for the ${sub.planType} meal plan has been approved! Your subscription is now active.`;
         io.to(`user_${userIdStr}`).emit('payment_approved', {
           subscriptionId: sub._id,
-          message: `✅ Your payment for the ${sub.planType} meal plan has been approved! Your subscription is now active.`
+          message: userMsg
         });
+
+        const newNotification = new Notification({
+          recipientId: sub.userId._id || sub.userId,
+          recipientRole: 'user',
+          type: 'subscription_status',
+          title: '✅ Payment Approved',
+          referenceId: sub._id,
+          message: userMsg
+        });
+        await newNotification.save();
       }
       // B4: Notify chef of new confirmed subscriber
       if (chefIdStr) {
+        const chefMsg = `💰 New subscriber confirmed! ${userName} has an active ${sub.planType} plan with you.`;
         io.to(`chef_${chefIdStr}`).emit('new_order_notification', {
           status: 'subscription_approved',
-          message: `💰 New subscriber confirmed! ${userName} has an active ${sub.planType} plan with you.`
+          message: chefMsg
         });
+
+        const newNotification = new Notification({
+          recipientId: sub.chefId._id || sub.chefId,
+          recipientRole: 'chef',
+          type: 'subscription_status',
+          title: '💰 New Subscriber',
+          referenceId: sub._id,
+          message: chefMsg
+        });
+        await newNotification.save();
       }
 
     } else if (action === 'reject') {
@@ -396,10 +433,21 @@ router.patch('/:id/verify-payment', authMiddleware, adminOnly, async (req, res) 
 
       // B3: Notify user in real-time
       if (userIdStr) {
+        const userMsg = '❌ Your subscription payment was rejected. Please re-upload a valid payment screenshot from your profile.';
         io.to(`user_${userIdStr}`).emit('payment_rejected', {
           subscriptionId: sub._id,
-          message: '❌ Your subscription payment was rejected. Please re-upload a valid payment screenshot from your profile.'
+          message: userMsg
         });
+
+        const newNotification = new Notification({
+          recipientId: sub.userId._id || sub.userId,
+          recipientRole: 'user',
+          type: 'subscription_status',
+          title: '❌ Payment Rejected',
+          referenceId: sub._id,
+          message: userMsg
+        });
+        await newNotification.save();
       }
 
       // B3: Send rejection email to user

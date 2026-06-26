@@ -186,13 +186,14 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
     setLoading(true);
     try {
       // FIX: authH is now passed to ALL protected routes
-      const [o, m, s, w, p, u] = await Promise.allSettled([
+      const [o, m, s, w, p, u, n] = await Promise.allSettled([
         API.get(`/api/chef/${chefId}/orders`, authH),
         API.get('/api/chef/add-dish', authH),
         API.get(`/api/chef/${chefId}/subscriptions`, authH),
         API.get(`/api/chef/${chefId}/wallet`, authH),
         API.get(`/api/subscriptions/plans/chef/${chefId}`),
         API.get(`/api/users/${chefId}`, authH),
+        API.get('/api/support/notifications', authH),
       ]);
       if (o.status === 'fulfilled') setOrders(o.value.data);
       if (m.status === 'fulfilled') setMenuItems(m.value.data);
@@ -207,6 +208,16 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
         setCurrentUser(updated);
         // Propagate updated user to parent so Navbar reflects changes immediately
         if (onUserUpdate) onUserUpdate(updated);
+      }
+      if (n.status === 'fulfilled') {
+        const dbNotis = n.value.data || [];
+        const mapped = dbNotis.map(item => ({
+          id: item._id,
+          title: item.title || 'Alert',
+          body: item.message,
+          time: new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }));
+        setNotifications(mapped);
       }
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
@@ -351,6 +362,12 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
       } else if (status === 'subscription_approved') {
         addNotification('💰 New Subscriber', message || 'A subscriber payment was confirmed.', `subscription_approved_${Date.now()}`);
         fetchAll();
+      } else if (status === 'paused') {
+        addNotification('🚫 Subscription Paused', message || 'A subscriber paused their subscription.', `subscription_paused_${Date.now()}`);
+        fetchAll();
+      } else if (status === 'active') {
+        addNotification('✅ Subscription Resumed', message || 'A subscriber resumed their subscription.', `subscription_resumed_${Date.now()}`);
+        fetchAll();
       } else if (status === 'cancelled') {
         addNotification('🚫 Order Cancelled', message || 'An order was cancelled.', `order_cancelled_${orderId}`);
         fetchAll();
@@ -478,6 +495,17 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
       toast.success('Dish deleted successfully!');
     } catch (e) {
       toast.error('Delete failed: ' + (e.response?.data?.message || e.response?.data?.error || e.message));
+    }
+  };
+
+  const handleClearNotifications = async () => {
+    try {
+      await API.delete('/api/support/notifications', authH);
+      setNotifications([]);
+      toast.success("Notifications cleared");
+    } catch (e) {
+      console.error("Failed to clear notifications", e);
+      toast.error("Failed to clear notifications");
     }
   };
 
@@ -658,7 +686,7 @@ const ChefDashboard = ({ onLogout, onUserUpdate }) => {
                 <div className="absolute right-0 mt-4 w-80 bg-white rounded-[28px] shadow-2xl border border-gray-100 overflow-hidden z-[100]">
                   <div className="p-5 border-b border-gray-50 flex justify-between items-center bg-[#1A2316]">
                     <h5 className="text-white font-black uppercase text-[10px] tracking-widest">Alerts ({notifications.length})</h5>
-                    <button onClick={() => setNotifications([])} className="text-[#FBBF24] text-[8px] font-black uppercase underline">Clear All</button>
+                    <button onClick={handleClearNotifications} className="text-[#FBBF24] text-[8px] font-black uppercase underline">Clear All</button>
                   </div>
                   <div className="max-h-[350px] overflow-y-auto divide-y divide-gray-50">
                     {notifications.length > 0 ? notifications.map(n => (
